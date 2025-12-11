@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Schibsted_Grotesk, Martian_Mono } from "next/font/google";
+import LightRays from "../components/LightRays";
+import NavBar from "../components/Navbar";
+import { AuthProvider } from "./context/AuthContext"; // <-- bạn đã import đúng
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const schibstedGrotesk = Schibsted_Grotesk({
+  variable: "--font-schibsted-grotesk",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const martianMono = Martian_Mono({
+  variable: "--font-martian-mono",
   subsets: ["latin"],
 });
 
@@ -19,15 +22,34 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${schibstedGrotesk.variable} ${martianMono.variable} antialiased`}
       >
-        {children}
+        {/*  ⬇️ BỌC TẤT CẢ BÊN TRONG AUTH PROVIDER  */}
+        <AuthProvider>
+          <NavBar />
+          <div className="absolute inset-0 top-0 z-[-1] min-h-screen">
+            <LightRays
+              raysOrigin="top-center"
+              raysColor="#00ffff"
+              raysSpeed={1.5}
+              lightSpread={0.8}
+              rayLength={1.2}
+              followMouse={true}
+              mouseInfluence={0.1}
+              noiseAmount={0.1}
+              distortion={0.05}
+              className="custom-rays"
+            />
+          </div>
+
+          <main>{children}</main>
+        </AuthProvider>
       </body>
     </html>
   );
