@@ -30,7 +30,6 @@ export default function RootLayout({
       <body
         className={`${schibstedGrotesk.variable} ${martianMono.variable} antialiased`}
       >
-        {/*  ⬇️ BỌC TẤT CẢ BÊN TRONG AUTH PROVIDER  */}
         <AuthProvider>
           <NavBar />
           <div className="absolute inset-0 top-0 z-[-1] min-h-screen">

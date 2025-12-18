@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@/app/context/AuthContext";
+import { usePublisher } from "@/app/context/PublisherContext";
 
 // Icon Components
 const MailIcon = () => (
@@ -38,21 +38,37 @@ const LockIcon = () => (
   </svg>
 );
 
-const LoginPage = () => {
-  const router = useRouter(); // ✅ Đúng vị trí
+export default function PublisherLoginPage() {
+  const router = useRouter();
+  const { user, login } = useAuth();
+  const { setPublisherData } = usePublisher(); // ✅ Thêm này
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const { login } = useAuth();
+  // ✅ Kiểm tra nếu đã đăng nhập rồi thì redirect luôn
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      user &&
+      user.accountType === "publisher"
+    ) {
+      console.log("✅ Đã đăng nhập, redirect đến game list");
+      router.push(`/publisher/game/${user.id}`);
+    }
+  }, [user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setMessage("");
+
     try {
-      const res = await fetch("http://localhost:3000/auth/customer/login", {
+      const res = await fetch("http://localhost:3000/auth/publisher/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -61,26 +77,43 @@ const LoginPage = () => {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.message || "Đăng nhập thất bại!");
-        setIsLoading(false);
+        setMessage(data.message || "Đăng nhập thất bại!");
         return;
       }
 
-      // ✅ Strip "Bearer " nếu backend trả về kèm prefix
-      const cleanToken = data.token.replace(/^Bearer\s+/i, "").trim();
+      const { token, user: userData } = data;
 
-      // Lưu token thuần (không có "Bearer ")
-      login(data.user, cleanToken);
+      if (!userData || !userData.id) {
+        setMessage("❌ Không thể lấy thông tin publisher!");
+        return;
+      }
 
-      alert("Đăng nhập thành công!");
-      router.push("/");
+      // ✅ Lưu thông tin vào AuthContext
+      login(
+        {
+          id: userData.id,
+          name: userData.publisherName || userData.name,
+          email: userData.email,
+          accountType: "publisher",
+          publisherName: userData.publisherName,
+        },
+        token
+      );
+
+      setMessage("🎉 Đăng nhập thành công! Đang chuyển hướng...");
+
+      // Redirect đến trang game list
+      setTimeout(() => {
+        router.push(`/publisher/game/${userData.id}`);
+      }, 1000);
     } catch (err) {
       console.error(err);
-      alert("Lỗi kết nối server!");
+      setMessage("❌ Lỗi kết nối server!");
     } finally {
       setIsLoading(false);
     }
   };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
@@ -88,18 +121,32 @@ const LoginPage = () => {
     });
   };
 
+  // Nếu đang kiểm tra auth, hiển thị loading
+  if (
+    typeof window !== "undefined" &&
+    user &&
+    user.accountType === "publisher"
+  ) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-light-200">Đang chuyển hướng...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="signup-card p-8 rounded-xl shadow-xl bg-dark-100 border border-dark-200">
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold mb-3">Đăng Nhập</h1>
-            <p className="text-light-200 text-lg">
-              Chào mừng bạn quay trở lại!
-            </p>
+            <h1 className="text-4xl font-bold mb-3">Publisher Login</h1>
+            <p className="text-light-200 text-lg">Chào mừng quay trở lại!</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          <div className="flex flex-col gap-6">
             {/* Email */}
             <div>
               <label
@@ -118,7 +165,7 @@ const LoginPage = () => {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  placeholder="example@email.com"
+                  placeholder="publisher@email.com"
                   className="bg-dark-200 rounded-lg pl-12 pr-4 py-3 w-full text-light-100 placeholder:text-light-200/50 border border-dark-300 focus:border-primary focus:outline-none transition"
                   required
                 />
@@ -150,9 +197,22 @@ const LoginPage = () => {
               </div>
             </div>
 
+            {/* Message */}
+            {message && (
+              <div
+                className={`text-center text-sm font-medium p-3 rounded-lg ${
+                  message.includes("thành công") || message.includes("🎉")
+                    ? "bg-green-500/20 text-green-400 border border-green-500/50"
+                    : "bg-red-500/20 text-red-400 border border-red-500/50"
+                }`}
+              >
+                {message}
+              </div>
+            )}
+
             {/* Submit Button */}
             <button
-              type="submit"
+              onClick={handleSubmit}
               disabled={isLoading}
               className="bg-primary hover:bg-primary/90 transition text-black font-semibold py-3 rounded-lg text-lg disabled:opacity-50"
             >
@@ -161,22 +221,18 @@ const LoginPage = () => {
 
             {/* Link to Register */}
             <p className="text-center text-light-200 text-sm">
-              Chưa có tài khoản?{" "}
+              Chưa có tài khoản publisher?{" "}
               <button
                 type="button"
-                onClick={() => router.push("/register")}
+                onClick={() => router.push("/publisher/register")}
                 className="text-primary font-semibold hover:opacity-90"
               >
                 Đăng ký ngay
               </button>
-              {/* Hoặc dùng Link */}
-              {/* <Link href="/register" className="text-primary font-semibold hover:opacity-90">Đăng ký ngay</Link> */}
             </p>
-          </form>
+          </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default LoginPage;
+}

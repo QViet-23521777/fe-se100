@@ -6,6 +6,8 @@ interface User {
   id?: string;
   name?: string;
   email?: string;
+  accountType?: "customer" | "publisher" | "admin"; // ✅ Đã có rồi
+  publisherName?: string; // ✅ THÊM: Tên publisher (nếu là publisher)
 }
 
 interface AuthContextType {
@@ -18,7 +20,6 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Load user 1 lần duy nhất — không dùng effect!
   const [user, setUser] = useState<User | null>(() => {
     try {
       if (typeof window === "undefined") return null;
@@ -29,7 +30,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  // Load token đúng chuẩn
   const [token, setToken] = useState<string | null>(() => {
     try {
       if (typeof window === "undefined") return null;
@@ -40,15 +40,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const login = (userData: User, jwt: string) => {
-    // ✅ ĐÚNG - Chỉ lưu token thuần, KHÔNG thêm "Bearer "
     const cleanToken = jwt.replace(/^Bearer\s+/i, "").trim();
 
     setUser(userData);
-    setToken(cleanToken); // ✅ Lưu token thuần
+    setToken(cleanToken);
 
     try {
       localStorage.setItem("user", JSON.stringify(userData));
-      localStorage.setItem("token", cleanToken); // ✅ Lưu token thuần
+      localStorage.setItem("token", cleanToken);
     } catch {}
   };
 
@@ -59,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.removeItem("user");
       localStorage.removeItem("token");
+      localStorage.removeItem("publisher"); // ✅ THÊM: Xóa publisher cũ nếu có
     } catch {}
   };
 

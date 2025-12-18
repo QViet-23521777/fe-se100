@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "../../context/AuthContext";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../../context/AuthContext";
 
+// ❌ XÓA publisherId khỏi interface
 interface GameForm {
   name: string;
   genre: string;
@@ -13,11 +15,12 @@ interface GameForm {
   version: string;
   originalPrice: number;
   discountPrice: number;
-  publisherId: string; // nếu backend yêu cầu number → đổi thành number
+  // ❌ XÓA: publisherId
 }
 
 export default function CreateGamePage() {
-  const { token } = useAuth();
+  const router = useRouter();
+  const { token, user } = useAuth();
 
   const [form, setForm] = useState<GameForm>({
     name: "",
@@ -29,11 +32,30 @@ export default function CreateGamePage() {
     version: "",
     originalPrice: 0,
     discountPrice: 0,
-    publisherId: "",
+    // ❌ XÓA: publisherId
   });
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  // ✅ Check authentication
+  if (!user || user.accountType !== "publisher") {
+    return (
+      <div className="max-w-3xl mx-auto mt-10 p-10">
+        <div className="bg-red-500/20 border border-red-500 p-4 rounded-lg text-center">
+          <p className="text-red-300 mb-4">
+            ❌ Bạn cần đăng nhập với tài khoản Publisher
+          </p>
+          <button
+            onClick={() => router.push("/login/publisher")}
+            className="bg-primary text-black px-6 py-2 rounded-lg font-semibold hover:bg-primary/90"
+          >
+            Đăng nhập Publisher
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ---------------------------------------------------------
   // 🎲 RANDOM GENERATOR
@@ -74,17 +96,13 @@ export default function CreateGamePage() {
         randomDescriptions[
           Math.floor(Math.random() * randomDescriptions.length)
         ],
-
       imageUrl: `https://picsum.photos/600/400?random=${Math.random()}`,
       videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-
       releaseDate: "2025-01-01",
       version: "1.0." + Math.floor(Math.random() * 10),
-
       originalPrice: Math.floor(Math.random() * 500) + 50,
       discountPrice: Math.floor(Math.random() * 300),
-
-      publisherId: String(Math.floor(Math.random() * 9000 + 1000)),
+      // ❌ XÓA: publisherId
     };
   };
 
@@ -126,23 +144,53 @@ export default function CreateGamePage() {
     }
 
     try {
+      console.log("📤 Sending game data:", form);
+      console.log("🔑 Using token:", token.substring(0, 20) + "...");
+
       const res = await fetch("http://localhost:3000/games", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${token}`, // ✅ Backend tự lấy publisherId từ đây
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(form), // ✅ KHÔNG có publisherId
       });
 
-      if (!res.ok) throw new Error();
+      const responseData = await res.json();
+      console.log("📥 Response:", responseData);
+
+      if (!res.ok) {
+        throw new Error(responseData.error?.message || "Failed to create game");
+      }
 
       setMessage("🎉 Game đã được thêm thành công!");
-    } catch {
-      setMessage("❌ Lỗi thêm game (Token sai hoặc API gặp lỗi).");
-    }
 
-    setLoading(false);
+      // ✅ Reset form
+      setForm({
+        name: "",
+        genre: "",
+        description: "",
+        imageUrl: "",
+        videoUrl: "",
+        releaseDate: "",
+        version: "",
+        originalPrice: 0,
+        discountPrice: 0,
+      });
+
+      // ✅ Redirect về trang game list sau 2s
+      setTimeout(() => {
+        router.push(`/publisher/game/${user.id}`);
+      }, 2000);
+    } catch (err) {
+      console.error("❌ Error:", err);
+      setMessage(
+        "❌ Lỗi thêm game: " +
+          (err instanceof Error ? err.message : "Unknown error")
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ---------------------------------------------------------
@@ -158,17 +206,19 @@ export default function CreateGamePage() {
           <input
             name="name"
             value={form.name}
-            className="w-full bg-dark-200 px-4 py-2 rounded"
+            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
             placeholder="Tên game"
             onChange={handleChange}
+            required
           />
 
           <input
             name="genre"
             value={form.genre}
-            className="w-full bg-dark-200 px-4 py-2 rounded"
-            placeholder="Thể loại"
+            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
+            placeholder="Thể loại (VD: Action, RPG)"
             onChange={handleChange}
+            required
           />
         </div>
 
@@ -176,10 +226,11 @@ export default function CreateGamePage() {
         <textarea
           name="description"
           value={form.description}
-          className="w-full bg-dark-200 px-4 py-2 rounded"
-          placeholder="Mô tả"
+          className="w-full bg-dark-200 px-4 py-2 rounded text-white"
+          placeholder="Mô tả game"
           rows={3}
           onChange={handleChange}
+          required
         />
 
         {/* Image + Video */}
@@ -187,17 +238,19 @@ export default function CreateGamePage() {
           <input
             name="imageUrl"
             value={form.imageUrl}
-            className="w-full bg-dark-200 px-4 py-2 rounded"
+            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
             placeholder="Image URL"
             onChange={handleChange}
+            required
           />
 
           <input
             name="videoUrl"
             value={form.videoUrl}
-            className="w-full bg-dark-200 px-4 py-2 rounded"
-            placeholder="Video URL"
+            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
+            placeholder="Video URL (YouTube)"
             onChange={handleChange}
+            required
           />
         </div>
 
@@ -207,62 +260,63 @@ export default function CreateGamePage() {
             name="releaseDate"
             type="date"
             value={form.releaseDate}
-            className="w-full bg-dark-200 px-4 py-2 rounded"
+            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
             onChange={handleChange}
+            required
           />
 
           <input
             name="version"
             value={form.version}
-            className="w-full bg-dark-200 px-4 py-2 rounded"
-            placeholder="Version"
+            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
+            placeholder="Version (VD: 1.0.0)"
             onChange={handleChange}
+            required
           />
         </div>
 
-        {/* Prices + Publisher */}
-        <div className="grid grid-cols-3 gap-4">
+        {/* ✅ ĐỔI: grid-cols-3 → grid-cols-2 (vì đã xóa Publisher ID) */}
+        <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col">
-            <label className="text-sm mb-1 text-gray-300">Giá gốc (VNĐ)</label>
+            <label className="text-sm mb-1 text-gray-300">
+              Giá gốc (VNĐ) *
+            </label>
             <input
               name="originalPrice"
               type="number"
               value={form.originalPrice}
-              className="w-full bg-dark-200 px-4 py-2 rounded"
+              className="w-full bg-dark-200 px-4 py-2 rounded text-white"
               placeholder="Nhập giá gốc"
               onChange={handleChange}
+              required
+              min="0"
             />
           </div>
 
           <div className="flex flex-col">
-            <label className="text-sm mb-1 text-gray-300">Giá giảm (VNĐ)</label>
+            <label className="text-sm mb-1 text-gray-300">
+              Giá giảm (VNĐ) *
+            </label>
             <input
               name="discountPrice"
               type="number"
               value={form.discountPrice}
-              className="w-full bg-dark-200 px-4 py-2 rounded"
+              className="w-full bg-dark-200 px-4 py-2 rounded text-white"
               placeholder="Nhập giá sau giảm"
               onChange={handleChange}
-            />
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-sm mb-1 text-gray-300">Publisher ID</label>
-            <input
-              name="publisherId"
-              value={form.publisherId}
-              className="w-full bg-dark-200 px-4 py-2 rounded"
-              placeholder="VD: PUB-1234"
-              onChange={handleChange}
+              required
+              min="0"
             />
           </div>
         </div>
+
+        {/* ❌ XÓA TOÀN BỘ phần Publisher ID input */}
 
         {/* Random Button */}
         <button
           type="button"
           onClick={() => setForm(randomGame())}
-          className="w-full bg-blue-500 text-white font-semibold py-2 rounded-lg hover:bg-blue-600"
+          className="w-full bg-blue-500 text-white font-semibold py-2 rounded-lg hover:bg-blue-600 transition"
         >
           🎲 Tạo Game Ngẫu Nhiên
         </button>
@@ -271,14 +325,22 @@ export default function CreateGamePage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-primary text-black font-semibold py-3 rounded-lg hover:bg-primary/90"
+          className="w-full bg-primary text-black font-semibold py-3 rounded-lg hover:bg-primary/90 transition disabled:opacity-50"
         >
-          {loading ? "Đang thêm..." : "Thêm Game"}
+          {loading ? "⏳ Đang thêm..." : "➕ Thêm Game"}
         </button>
       </form>
 
       {message && (
-        <p className="text-center mt-4 text-sm font-medium">{message}</p>
+        <div
+          className={`mt-4 p-4 rounded-lg text-center font-medium ${
+            message.includes("thành công")
+              ? "bg-green-500/20 border border-green-500 text-green-300"
+              : "bg-red-500/20 border border-red-500 text-red-300"
+          }`}
+        >
+          {message}
+        </div>
       )}
     </div>
   );
