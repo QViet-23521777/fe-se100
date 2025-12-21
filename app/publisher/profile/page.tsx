@@ -4,41 +4,59 @@ import { useAuth } from "@/app/context/AuthContext";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-interface UserProfile {
+interface PublisherProfile {
   id: string;
+  publisherName: string;
   email: string;
   phoneNumber: string;
-  username: string;
-  password?: string;
-  fullName?: string;
-  genderId?: string;
-  registrationDate: string;
-  accountStatus: string;
-  accountBalance: number;
-  bankType: string;
-  bankName: string;
-  description: string;
+  socialMedia?: string;
+  bankType?: string;
+  bankName?: string;
+  contractDate: string;
+  contractDuration: number;
+  activityStatus: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export default function ProfilePage() {
+interface ContractInfo {
+  contractDate: string;
+  contractDuration: number;
+  expiryDate: string;
+  activityStatus: string;
+  isActive: boolean;
+  daysRemaining: number;
+  isExpiringSoon: boolean;
+}
+
+interface Statistics {
+  totalGames: number;
+  releasedGames: number;
+  upcomingGames: number;
+  totalRevenue: number;
+  activeContract: boolean;
+  contractExpiryDate: string;
+  daysUntilExpiry: number;
+}
+
+export default function PublisherProfilePage() {
   const { user, token } = useAuth();
   const router = useRouter();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<PublisherProfile | null>(null);
+  const [contract, setContract] = useState<ContractInfo | null>(null);
+  const [statistics, setStatistics] = useState<Statistics | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    username: "",
+    publisherName: "",
     phoneNumber: "",
+    socialMedia: "",
     bankType: "",
     bankName: "",
-    description: "",
   });
 
-  // ✅ FIX 1: Sử dụng useCallback để tránh fetchProfile bị tạo lại mỗi render
   const fetchProfile = useCallback(async () => {
     try {
       setLoading(true);
@@ -50,76 +68,108 @@ export default function ProfilePage() {
         throw new Error("No token found");
       }
 
-      console.log(
-        "📡 Calling API with token:",
-        storedToken.substring(0, 20) + "..."
-      );
+      console.log("📡 Fetching publisher profile...");
 
-      const response = await fetch("http://localhost:3000/customers/me", {
+      const response = await fetch("http://localhost:3000/publishers/me", {
         headers: {
           Authorization: `Bearer ${storedToken}`,
           "Content-Type": "application/json",
         },
       });
 
-      console.log("📥 Response status:", response.status);
-
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Error response:", errorText);
         throw new Error(`Failed to fetch profile: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("✅ Profile data received:", data);
+      console.log("✅ Publisher profile received:", data);
 
       setProfile(data);
       setFormData({
-        username: data.username || "",
+        publisherName: data.publisherName || "",
         phoneNumber: data.phoneNumber || "",
+        socialMedia: data.socialMedia || "",
         bankType: data.bankType || "",
         bankName: data.bankName || "",
-        description: data.description || "",
       });
+
+      // Fetch contract info
+      fetchContract(storedToken);
+      // Fetch statistics
+      fetchStatistics(storedToken);
     } catch (error) {
       console.error("💥 Error fetching profile:", error);
       setError(error instanceof Error ? error.message : "Có lỗi xảy ra");
 
       if (error instanceof Error && error.message.includes("401")) {
         localStorage.clear();
-        router.push("/user/login");
+        router.push("/publisher/login");
       }
     } finally {
       setLoading(false);
     }
-  }, [router]); // ✅ Chỉ phụ thuộc vào router
+  }, [router]);
 
-  // ✅ FIX 2: useEffect với dependency array đầy đủ
+  const fetchContract = async (storedToken: string) => {
+    try {
+      const response = await fetch(
+        "http://localhost:3000/publishers/me/contract",
+        {
+          headers: {
+            Authorization: `Bearer ${storedToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setContract(data);
+      }
+    } catch (error) {
+      console.error("Error fetching contract:", error);
+    }
+  };
+
+  const fetchStatistics = async (storedToken: string) => {
+    try {
+      const response = await fetch(
+        "http://localhost:3000/publishers/me/statistics",
+        {
+          headers: {
+            Authorization: `Bearer ${storedToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setStatistics(data);
+      }
+    } catch (error) {
+      console.error("Error fetching statistics:", error);
+    }
+  };
+
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
 
-    console.log("🔍 DEBUG Profile Page:");
-    console.log("Token from localStorage:", storedToken);
-    console.log("User from localStorage:", storedUser);
-    console.log("AuthContext user:", user);
-    console.log("AuthContext token:", token);
-
-    if (!storedToken) {
-      console.error("❌ No token - redirecting to login");
-      router.push("/user/login");
+    if (!storedToken || user?.accountType !== "publisher") {
+      console.error("❌ Not a publisher or no token - redirecting");
+      router.push("/publisher/login");
       return;
     }
 
     fetchProfile();
-  }, [fetchProfile, router, user, token]); // ✅ Thêm đầy đủ dependencies
+  }, [fetchProfile, router, user]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const storedToken = localStorage.getItem("token");
 
-      const response = await fetch("http://localhost:3000/customers/me", {
+      const response = await fetch("http://localhost:3000/publishers/me", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -171,53 +221,53 @@ export default function ProfilePage() {
   if (!profile) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl">Không tìm thấy thông tin người dùng</div>
+        <div className="text-xl">Không tìm thấy thông tin publisher</div>
       </div>
     );
   }
 
   return (
     <main className="min-h-screen py-10">
-      <div className="max-w-4xl mx-auto px-4">
+      <div className="max-w-6xl mx-auto px-4">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Thông tin tài khoản</h1>
-          <p className="text-light-200">Quản lý thông tin cá nhân của bạn</p>
+          <h1 className="text-4xl font-bold mb-2">Thông tin Publisher</h1>
+          <p className="text-light-200">
+            Quản lý thông tin nhà phát hành của bạn
+          </p>
         </div>
 
+        {/* Main Profile Card */}
         <div className="bg-dark-100 border-dark-200 border rounded-lg p-6 mb-6">
           <div className="flex justify-between items-start mb-6">
             <div>
               <h2 className="text-2xl font-bold mb-1">
-                {profile.fullName || profile.username || "User"}
+                {profile.publisherName}
               </h2>
               <p className="text-light-200">{profile.email}</p>
+              <span className="inline-block mt-2 text-xs bg-yellow-500/20 text-yellow-300 px-3 py-1 rounded">
+                Publisher Account
+              </span>
             </div>
             <span
               className={`pill ${
-                profile.accountStatus === "Active"
+                profile.activityStatus === "Active"
                   ? "bg-green-500/20 text-green-400"
                   : "bg-red-500/20 text-red-400"
               }`}
             >
-              {profile.accountStatus}
+              {profile.activityStatus}
             </span>
           </div>
 
           {!isEditing ? (
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-4">
-                <InfoItem label="Username" value={profile.username} />
+                <InfoItem label="Tên Publisher" value={profile.publisherName} />
                 <InfoItem label="Email" value={profile.email} />
                 <InfoItem label="Số điện thoại" value={profile.phoneNumber} />
                 <InfoItem
-                  label="Số dư tài khoản"
-                  value={`${profile.accountBalance.toLocaleString()} VNĐ`}
-                />
-                <InfoItem
-                  label="Ngày đăng ký"
-                  value={new Date(profile.registrationDate).toLocaleDateString(
-                    "vi-VN"
-                  )}
+                  label="Social Media"
+                  value={profile.socialMedia || "Chưa có"}
                 />
               </div>
 
@@ -231,12 +281,14 @@ export default function ProfilePage() {
                   value={profile.bankName || "Chưa có"}
                 />
                 <InfoItem
-                  label="Mô tả"
-                  value={profile.description || "Chưa có"}
+                  label="Ngày ký hợp đồng"
+                  value={new Date(profile.contractDate).toLocaleDateString(
+                    "vi-VN"
+                  )}
                 />
                 <InfoItem
-                  label="Cập nhật lần cuối"
-                  value={new Date(profile.updatedAt).toLocaleString("vi-VN")}
+                  label="Thời hạn hợp đồng"
+                  value={`${profile.contractDuration} tháng`}
                 />
               </div>
             </div>
@@ -244,10 +296,10 @@ export default function ProfilePage() {
             <form onSubmit={handleUpdate} className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
                 <FormInput
-                  label="Username"
-                  value={formData.username}
+                  label="Tên Publisher"
+                  value={formData.publisherName}
                   onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
+                    setFormData({ ...formData, publisherName: e.target.value })
                   }
                 />
                 <FormInput
@@ -255,6 +307,13 @@ export default function ProfilePage() {
                   value={formData.phoneNumber}
                   onChange={(e) =>
                     setFormData({ ...formData, phoneNumber: e.target.value })
+                  }
+                />
+                <FormInput
+                  label="Social Media"
+                  value={formData.socialMedia}
+                  onChange={(e) =>
+                    setFormData({ ...formData, socialMedia: e.target.value })
                   }
                 />
                 <FormInput
@@ -272,13 +331,6 @@ export default function ProfilePage() {
                   }
                 />
               </div>
-              <FormTextarea
-                label="Mô tả"
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-              />
 
               <div className="flex gap-3 pt-4">
                 <button
@@ -308,36 +360,72 @@ export default function ProfilePage() {
           )}
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="bg-dark-100 border-dark-200 border rounded-lg p-6">
-            <h3 className="text-xl font-bold mb-4">Thống kê tài khoản</h3>
-            <div className="space-y-3">
-              <StatItem
-                label="Tổng số dư"
-                value={`${profile.accountBalance.toLocaleString()} VNĐ`}
-                icon="💰"
-              />
-              <StatItem
-                label="Trạng thái"
-                value={profile.accountStatus}
-                icon="✅"
-              />
-              <StatItem
-                label="Thời gian tham gia"
-                value={
-                  Math.floor(
-                    (new Date().getTime() -
-                      new Date(profile.registrationDate).getTime()) /
-                      (1000 * 60 * 60 * 24)
-                  ) + " ngày"
-                }
-                icon="📅"
-              />
+        <div className="grid md:grid-cols-3 gap-6 mb-6">
+          {/* Statistics Card */}
+          {statistics && (
+            <div className="bg-dark-100 border-dark-200 border rounded-lg p-6">
+              <h3 className="text-xl font-bold mb-4">📊 Thống kê</h3>
+              <div className="space-y-3">
+                <StatItem
+                  label="Tổng số game"
+                  value={statistics.totalGames.toString()}
+                  icon="🎮"
+                />
+                <StatItem
+                  label="Đã phát hành"
+                  value={statistics.releasedGames.toString()}
+                  icon="✅"
+                />
+                <StatItem
+                  label="Sắp ra mắt"
+                  value={statistics.upcomingGames.toString()}
+                  icon="⏳"
+                />
+                <StatItem
+                  label="Tổng doanh thu"
+                  value={`${statistics.totalRevenue.toLocaleString()} VNĐ`}
+                  icon="💰"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
+          {/* Contract Card */}
+          {contract && (
+            <div className="bg-dark-100 border-dark-200 border rounded-lg p-6">
+              <h3 className="text-xl font-bold mb-4">📄 Hợp đồng</h3>
+              <div className="space-y-3">
+                <StatItem
+                  label="Trạng thái"
+                  value={contract.isActive ? "Còn hiệu lực" : "Hết hạn"}
+                  icon={contract.isActive ? "✅" : "❌"}
+                />
+                <StatItem
+                  label="Ngày hết hạn"
+                  value={new Date(contract.expiryDate).toLocaleDateString(
+                    "vi-VN"
+                  )}
+                  icon="📅"
+                />
+                <StatItem
+                  label="Số ngày còn lại"
+                  value={`${contract.daysRemaining} ngày`}
+                  icon="⏰"
+                />
+                {contract.isExpiringSoon && (
+                  <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                    <p className="text-yellow-400 text-sm">
+                      ⚠️ Hợp đồng sắp hết hạn! Vui lòng liên hệ để gia hạn.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Bank Info Card */}
           <div className="bg-dark-100 border-dark-200 border rounded-lg p-6">
-            <h3 className="text-xl font-bold mb-4">Thông tin ngân hàng</h3>
+            <h3 className="text-xl font-bold mb-4">🏦 Ngân hàng</h3>
             <div className="space-y-3">
               <StatItem
                 label="Loại"
@@ -356,6 +444,24 @@ export default function ProfilePage() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid md:grid-cols-2 gap-4">
+          <button
+            onClick={() => router.push(`/publisher/game/${user?.id}`)}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-3"
+          >
+            <span className="text-2xl">🎮</span>
+            <span>Quản lý Game của tôi</span>
+          </button>
+          <button
+            onClick={() => router.push("/publisher/change-password")}
+            className="bg-dark-200 hover:bg-dark-300 px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-3"
+          >
+            <span className="text-2xl">🔒</span>
+            <span>Đổi mật khẩu</span>
+          </button>
         </div>
       </div>
     </main>
@@ -387,28 +493,6 @@ function FormInput({
         type="text"
         value={value}
         onChange={onChange}
-        className="w-full bg-dark-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary"
-      />
-    </div>
-  );
-}
-
-function FormTextarea({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-}) {
-  return (
-    <div>
-      <label className="text-light-200 text-sm mb-2 block">{label}</label>
-      <textarea
-        value={value}
-        onChange={onChange}
-        rows={3}
         className="w-full bg-dark-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary"
       />
     </div>

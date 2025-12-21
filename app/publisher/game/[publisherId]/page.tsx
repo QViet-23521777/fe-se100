@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAuth } from "@/app/context/AuthContext"; // ✅ Dùng AuthContext thay vì PublisherContext
+import { useAuth } from "@/app/context/AuthContext";
 
 interface Game {
   id: string;
@@ -24,19 +24,25 @@ interface Game {
 export default function PublisherGamesPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, token } = useAuth(); // ✅ Dùng AuthContext
+  const { user, token } = useAuth();
 
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isClient, setIsClient] = useState(false);
 
   const publisherId = params.publisherId as string;
 
-  // ✅ Kiểm tra authentication
+  // Fix hydration
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    setIsClient(true);
+  }, []);
+
+  // Check authentication
+  useEffect(() => {
+    if (!isClient) return;
 
     if (!user || !token) {
       console.warn("❌ Chưa đăng nhập, redirect to login...");
@@ -51,7 +57,6 @@ export default function PublisherGamesPage() {
       return;
     }
 
-    // ✅ Kiểm tra xem publisherId có khớp với user.id không
     if (publisherId && publisherId !== user.id) {
       console.error(
         "❌ Publisher ID không khớp! URL:",
@@ -64,50 +69,50 @@ export default function PublisherGamesPage() {
         router.push(`/publisher/game/${user.id}`);
       }, 2000);
     }
-  }, [user, token, publisherId, router]);
+  }, [isClient, user, token, publisherId, router]);
 
-  // Fetch games của publisher
-  const fetchPublisherGames = async () => {
-    if (!publisherId || !token) return;
-
-    setLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch(
-        `http://localhost:3000/games?filter=${encodeURIComponent(
-          JSON.stringify({ where: { publisherId } })
-        )}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const data = await res.json();
-      console.log("✅ Fetched games:", data);
-      setGames(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setError("❌ Không thể tải danh sách game");
-      console.error("Fetch games error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Fetch games
   useEffect(() => {
-    if (publisherId && user?.id && token) {
+    const fetchPublisherGames = async () => {
+      if (!publisherId || !token) return;
+
+      setLoading(true);
+      setError("");
+
+      try {
+        const res = await fetch(
+          `http://localhost:3000/games?filter=${encodeURIComponent(
+            JSON.stringify({ where: { publisherId } })
+          )}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        const data = await res.json();
+        console.log("✅ Fetched games:", data);
+        setGames(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setError("❌ Không thể tải danh sách game");
+        console.error("Fetch games error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (isClient && publisherId && user?.id && token) {
       console.log("🔄 Fetching games for publisher:", publisherId);
       fetchPublisherGames();
     }
-  }, [publisherId, user?.id, token]);
+  }, [isClient, publisherId, user?.id, token]);
 
-  // Xóa game
+  // Delete game
   const handleDeleteGame = async (gameId: string) => {
     if (!confirm("Bạn có chắc muốn xóa game này?")) return;
 
@@ -122,7 +127,8 @@ export default function PublisherGamesPage() {
 
       if (!res.ok) throw new Error("Failed to delete game");
 
-      fetchPublisherGames();
+      // Refresh list
+      setGames(games.filter((g) => g.id !== gameId));
       alert("✅ Xóa game thành công!");
     } catch (err) {
       console.error(err);
@@ -132,8 +138,7 @@ export default function PublisherGamesPage() {
     }
   };
 
-  // ✅ Loading state khi chưa có user
-  if (!user || !token) {
+  if (!isClient || !user || !token) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -144,7 +149,6 @@ export default function PublisherGamesPage() {
     );
   }
 
-  // Filter games based on search
   const filteredGames = games.filter(
     (game) =>
       game.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -154,7 +158,6 @@ export default function PublisherGamesPage() {
 
   return (
     <div className="max-w-7xl mx-auto mt-10 p-6">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">
           Quản lý Game - {user.publisherName || user.name}
@@ -162,9 +165,7 @@ export default function PublisherGamesPage() {
         <p className="text-gray-400">Publisher ID: {user.id}</p>
       </div>
 
-      {/* Toolbar: Create + Search */}
       <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
-        {/* Create Game Button */}
         <button
           onClick={() => router.push(`/publisher/game/create`)}
           className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-lg transition flex items-center gap-2 whitespace-nowrap"
@@ -172,7 +173,6 @@ export default function PublisherGamesPage() {
           ➕ Tạo Game Mới
         </button>
 
-        {/* Search Bar */}
         <div className="flex-1 flex gap-2 w-full">
           <input
             type="text"
@@ -184,14 +184,12 @@ export default function PublisherGamesPage() {
         </div>
       </div>
 
-      {/* Error Message */}
       {error && (
         <div className="bg-red-500/20 border border-red-500 text-red-300 p-4 rounded-lg mb-6">
           {error}
         </div>
       )}
 
-      {/* Loading State */}
       {loading && (
         <div className="text-center py-20">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
@@ -199,7 +197,6 @@ export default function PublisherGamesPage() {
         </div>
       )}
 
-      {/* Empty State */}
       {!loading && games.length === 0 && !error && (
         <div className="text-center py-20">
           <p className="text-6xl mb-4">🎮</p>
@@ -213,7 +210,6 @@ export default function PublisherGamesPage() {
         </div>
       )}
 
-      {/* Games Grid */}
       {!loading && games.length > 0 && (
         <>
           <div className="mb-4 flex justify-between items-center">
@@ -250,7 +246,7 @@ export default function PublisherGamesPage() {
             <div className="text-center py-20">
               <p className="text-6xl mb-4">🔍</p>
               <p className="text-xl text-gray-400 mb-6">
-                Không tìm thấy game nào với từ khóa "{searchQuery}"
+                Không tìm thấy game nào với từ khóa &quot;{searchQuery}&quot;
               </p>
             </div>
           ) : (
@@ -260,7 +256,7 @@ export default function PublisherGamesPage() {
                   key={game.id}
                   game={game}
                   onDelete={handleDeleteGame}
-                  onEdit={(id) => router.push(`/publisher/edit/${id}`)}
+                  onEdit={(id) => router.push(`/publisher/game/edit/${id}`)}
                   isDeleting={deleteLoading === game.id}
                 />
               ))}
@@ -272,7 +268,6 @@ export default function PublisherGamesPage() {
   );
 }
 
-// Game Card Component
 function GameCard({
   game,
   onDelete,
@@ -293,26 +288,23 @@ function GameCard({
 
   return (
     <div className="bg-slate-800 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-105 transition-all border border-slate-700">
-      {/* Image */}
       <div className="relative h-48 bg-slate-900">
         <img
           src={game.imageUrl}
           alt={game.name}
           className="w-full h-full object-cover"
           onError={(e) => {
-            e.currentTarget.src =
-              "https://via.placeholder.com/400x300?text=No+Image";
+            const target = e.target as HTMLImageElement;
+            target.src = "https://via.placeholder.com/400x300?text=No+Image";
           }}
         />
 
-        {/* Discount Badge */}
         {discountPercent > 0 && (
           <div className="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded-full font-bold text-sm">
             -{discountPercent}%
           </div>
         )}
 
-        {/* Status Badge */}
         <div
           className={`absolute top-2 left-2 px-3 py-1 rounded-full text-xs font-bold ${
             game.releaseStatus === "Released"
@@ -324,7 +316,6 @@ function GameCard({
         </div>
       </div>
 
-      {/* Content */}
       <div className="p-4">
         <h3 className="text-xl font-bold mb-2 truncate text-white">
           {game.name}
@@ -339,7 +330,6 @@ function GameCard({
           {game.description}
         </p>
 
-        {/* Price */}
         <div className="flex items-center gap-2 mb-4">
           {game.discountPrice < game.originalPrice ? (
             <>
@@ -357,7 +347,6 @@ function GameCard({
           )}
         </div>
 
-        {/* Meta Info */}
         <div className="text-xs text-gray-500 space-y-1 mb-4">
           <div>
             📅 Phát hành:{" "}
@@ -368,7 +357,6 @@ function GameCard({
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => onEdit(game.id)}
@@ -385,7 +373,6 @@ function GameCard({
           </button>
         </div>
 
-        {/* View Details */}
         {game.videoUrl && (
           <a
             href={game.videoUrl}
