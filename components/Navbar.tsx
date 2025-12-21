@@ -10,16 +10,12 @@ export default function NavBar() {
   const router = useRouter();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // ✅ GIẢI PHÁP TỐT NHẤT: Dùng state bình thường + suppressHydrationWarning
   const [mounted, setMounted] = useState(false);
 
-  // Set mounted sau khi component đã hydrate
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -35,6 +31,7 @@ export default function NavBar() {
   }, []);
 
   const isPublisher = user?.accountType === "publisher";
+  const isCustomer = user?.accountType === "customer";
 
   const handleLogout = () => {
     logout();
@@ -57,9 +54,14 @@ export default function NavBar() {
     router.push(`/publisher/game/${user.id}`);
   };
 
+  // ✅ Điều hướng profile theo accountType
   const handleProfileClick = () => {
     setShowDropdown(false);
-    router.push("/user/profile");
+    if (isPublisher) {
+      router.push("/publisher/profile");
+    } else {
+      router.push("/user/profile");
+    }
   };
 
   return (
@@ -84,13 +86,11 @@ export default function NavBar() {
           {mounted && user && isPublisher ? "Quản lý Game" : "Thêm Game"}
         </button>
 
-        {/* User Menu - suppressHydrationWarning để tránh warning SSR/CSR mismatch */}
         <div suppressHydrationWarning>
           {mounted ? (
             <>
               {user ? (
                 <div className="relative" ref={dropdownRef}>
-                  {/* User Button */}
                   <button
                     type="button"
                     onClick={() => setShowDropdown(!showDropdown)}
@@ -126,7 +126,6 @@ export default function NavBar() {
                     </svg>
                   </button>
 
-                  {/* Dropdown Menu */}
                   {showDropdown && (
                     <div className="absolute right-0 mt-2 w-64 bg-dark-100 border border-dark-200 rounded-lg shadow-lg overflow-hidden">
                       {/* User Info */}
@@ -142,10 +141,16 @@ export default function NavBar() {
                             Publisher Account
                           </span>
                         )}
+                        {isCustomer && (
+                          <span className="inline-block mt-2 text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">
+                            Customer Account
+                          </span>
+                        )}
                       </div>
 
                       {/* Menu Items */}
                       <div className="py-2">
+                        {/* ✅ Profile - Điều hướng theo accountType */}
                         <button
                           onClick={handleProfileClick}
                           className="w-full text-left px-4 py-2 hover:bg-dark-200 transition flex items-center gap-3"
@@ -154,34 +159,82 @@ export default function NavBar() {
                           <span>Thông tin tài khoản</span>
                         </button>
 
+                        {/* Publisher specific menu */}
                         {isPublisher && (
-                          <button
-                            onClick={() => {
-                              setShowDropdown(false);
-                              router.push(`/publisher/game/${user.id}`);
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-dark-200 transition flex items-center gap-3"
-                          >
-                            <span className="text-xl">🎮</span>
-                            <span>Quản lý Game</span>
-                          </button>
+                          <>
+                            <button
+                              onClick={() => {
+                                setShowDropdown(false);
+                                router.push(`/publisher/game/${user.id}`);
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-dark-200 transition flex items-center gap-3"
+                            >
+                              <span className="text-xl">🎮</span>
+                              <span>Quản lý Game</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowDropdown(false);
+                                router.push("/publisher/statistics");
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-dark-200 transition flex items-center gap-3"
+                            >
+                              <span className="text-xl">📊</span>
+                              <span>Thống kê & Doanh thu</span>
+                            </button>
+                          </>
                         )}
 
+                        {/* Customer specific menu */}
+                        {isCustomer && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setShowDropdown(false);
+                                router.push("/user/orders");
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-dark-200 transition flex items-center gap-3"
+                            >
+                              <span className="text-xl">📦</span>
+                              <span>Đơn hàng của tôi</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowDropdown(false);
+                                router.push("/user/library");
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-dark-200 transition flex items-center gap-3"
+                            >
+                              <span className="text-xl">📚</span>
+                              <span>Thư viện Game</span>
+                            </button>
+                          </>
+                        )}
+
+                        {/* Common menu items */}
                         <button
                           onClick={() => {
                             setShowDropdown(false);
-                            router.push("/user/orders");
+                            router.push(
+                              isPublisher
+                                ? "/publisher/change-password"
+                                : "/user/change-password"
+                            );
                           }}
                           className="w-full text-left px-4 py-2 hover:bg-dark-200 transition flex items-center gap-3"
                         >
-                          <span className="text-xl">📦</span>
-                          <span>Đơn hàng của tôi</span>
+                          <span className="text-xl">🔒</span>
+                          <span>Đổi mật khẩu</span>
                         </button>
 
                         <button
                           onClick={() => {
                             setShowDropdown(false);
-                            router.push("/user/settings");
+                            router.push(
+                              isPublisher
+                                ? "/publisher/settings"
+                                : "/user/settings"
+                            );
                           }}
                           className="w-full text-left px-4 py-2 hover:bg-dark-200 transition flex items-center gap-3"
                         >
