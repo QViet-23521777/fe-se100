@@ -2,7 +2,20 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+- Node.js 18+ (recommended: 20)
+- The backend API running (see `.env.example`)
+
+### Run locally
+1) Install dependencies:
+
+```bash
+npm ci
+```
+
+2) Create `.env.local` from `.env.example` and set `NEXT_PUBLIC_GAME_STORE_API_BASE_URL` to match your backend.
+
+3) Run the development server:
 
 ```bash
 npm run dev

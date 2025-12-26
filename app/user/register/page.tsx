@@ -1,228 +1,278 @@
 "use client";
-import { useState } from "react";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { useAuth } from "@/app/context/AuthContext";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
+
+const hero = "/assets/1d6d5ae07fe3da8267a6f757f03f02f18eff9f08.png";
+
+type Message = { type: "error" | "success"; text: string };
+
+function safeNextPath(value: string | null) {
+  if (!value) return "/";
+  if (!value.startsWith("/")) return "/";
+  if (value.startsWith("//")) return "/";
+  return value;
+}
+
+function isValidPhoneNumber(value: string) {
+  return /^(0|\+84)[0-9]{9,10}$/.test(value.trim());
+}
+
 export default function RegisterPage() {
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
+  const router = useRouter();
+  const { user, login } = useAuth();
+
+  const [nextPath, setNextPath] = useState("/");
+
+  const [form, setForm] = useState({
+    fullName: "",
     email: "",
     phoneNumber: "",
-    username: "",
     password: "",
-    genderId: "",
+    confirmPassword: "",
+    agree: false,
   });
-  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState<Message | null>(null);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+  useEffect(() => {
+    try {
+      const next = new URLSearchParams(window.location.search).get("next");
+      setNextPath(safeNextPath(next));
+    } catch {
+      setNextPath("/");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    router.replace(nextPath);
+  }, [nextPath, router, user]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    setForm((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMessage("Đang xử lý...");
-    setLoading(true);
+    setMessage(null);
 
-    console.log("📤 Đang gửi dữ liệu đăng ký:", formData);
+    if (!form.agree) {
+      setMessage({
+        type: "error",
+        text: "Please agree to the Terms and Privacy policy.",
+      });
+      return;
+    }
 
+    if (form.password.length < 8) {
+      setMessage({ type: "error", text: "Password must be at least 8 characters." });
+      return;
+    }
+
+    if (form.password !== form.confirmPassword) {
+      setMessage({ type: "error", text: "Passwords do not match." });
+      return;
+    }
+
+    if (!isValidPhoneNumber(form.phoneNumber)) {
+      setMessage({
+        type: "error",
+        text: "Phone number must start with 0 or +84 and have 10–12 digits total.",
+      });
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      const res = await fetch("http://localhost:3000/auth/customer/register", {
+      const payload = {
+        email: form.email.trim(),
+        username: form.fullName.trim(),
+        password: form.password,
+        phoneNumber: form.phoneNumber.trim(),
+      };
+
+      const res = await fetch(gameStoreApiUrl("/auth/customer/register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
-      const responseText = await res.text();
-      console.log("📥 Response:", responseText);
+      const data = (await res.json().catch(() => null)) as
+        | { message?: string }
+        | null;
 
-      let json;
-      try {
-        json = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("❌ Lỗi parse JSON:", parseError);
-        setMessage(`Lỗi server: ${responseText}`);
-        setLoading(false);
+      if (!res.ok) {
+        setMessage({
+          type: "error",
+          text: data?.message || "Sign up failed. Please check your info and try again.",
+        });
         return;
       }
 
-      if (!res.ok) {
-        // Xử lý lỗi theo status code
-        if (res.status === 409) {
-          // Email/username/phone đã tồn tại
-          const errorMsg =
-            json.message ||
-            json.error?.details ||
-            "Email hoặc username đã được sử dụng";
-          setMessage(`⚠️ ${errorMsg}`);
-          console.error("🔴 409 Conflict:", errorMsg);
-        } else if (res.status === 422) {
-          // Lỗi validation
-          setMessage(json.message || "Dữ liệu không hợp lệ");
-          console.error("🔴 422 Validation Error:", json);
-        } else {
-          setMessage(json.message || "Đăng ký thất bại");
-        }
-      } else {
-        // Thành công
-        console.log("✅ Đăng ký thành công:", json);
-        setMessage("✅ Đăng ký thành công! Đang chuyển đến trang đăng nhập...");
+      const loginRes = await fetch(gameStoreApiUrl("/auth/customer/login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: payload.email, password: payload.password }),
+      });
 
-        // Reset form
-        setFormData({
-          email: "",
-          phoneNumber: "",
-          username: "",
-          password: "",
-          genderId: "",
-        });
+      const loginData = (await loginRes.json().catch(() => null)) as
+        | { token?: string; user?: unknown; message?: string }
+        | null;
 
-        // Chuyển đến trang login sau 2 giây
-        setTimeout(() => {
-          router.push("/user/login");
-        }, 2000);
+      if (loginRes.ok && loginData?.token && loginData?.user) {
+        login(loginData.user as any, loginData.token);
+        router.push(nextPath);
+        return;
       }
+
+      setMessage({
+        type: "success",
+        text: "Account created! Please log in to continue.",
+      });
+      router.push(`/user/login?next=${encodeURIComponent(nextPath)}`);
     } catch (err) {
-      console.error("❌ Lỗi network:", err);
-      setMessage(
-        err instanceof Error
-          ? `Lỗi kết nối: ${err.message}`
-          : "Lỗi không xác định"
-      );
+      console.error(err);
+      setMessage({ type: "error", text: "Server connection error." });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="signup-card p-8 rounded-xl shadow-xl bg-dark-100 border border-dark-200">
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold mb-3">Đăng Ký</h1>
-            <p className="text-light-200 text-lg">Tạo tài khoản mới của bạn</p>
-          </div>
+    <div className="min-h-screen w-full bg-[#070f2b] text-white flex items-center justify-center px-6 py-10">
+      <div className="relative grid w-full max-w-6xl gap-8 lg:grid-cols-[520px_minmax(0,1fr)] items-center">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="absolute left-6 top-6 text-white/80 text-2xl leading-none"
+          aria-label="Back"
+        >
+          ×
+        </button>
 
-          <div className="flex flex-col gap-5">
-            <div>
-              <label className="text-light-100 text-base font-semibold mb-2 block">
-                Email
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                placeholder="example@email.com"
-                className="bg-dark-200 rounded-lg px-4 py-3 w-full text-light-100 placeholder:text-light-200/50 border border-dark-300 focus:border-primary focus:outline-none transition"
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-w-[520px]">
+          <h1 className="text-4xl font-semibold mb-2">Create an account</h1>
+          <p className="text-white/70 mb-2">Sign up to continue to checkout and wishlist.</p>
 
-            <div>
-              <label className="text-light-100 text-base font-semibold mb-2 block">
-                Số điện thoại
-              </label>
-              <input
-                type="text"
-                name="phoneNumber"
-                value={formData.phoneNumber}
-                onChange={handleChange}
-                required
-                placeholder="0901234567"
-                className="bg-dark-200 rounded-lg px-4 py-3 w-full text-light-100 placeholder:text-light-200/50 border border-dark-300 focus:border-primary focus:outline-none transition"
-              />
-            </div>
+          <input
+            name="fullName"
+            type="text"
+            placeholder="Full Name"
+            value={form.fullName}
+            onChange={handleChange}
+            minLength={3}
+            required
+            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+          />
 
-            <div>
-              <label className="text-light-100 text-base font-semibold mb-2 block">
-                Tên người dùng
-              </label>
-              <input
-                type="text"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                placeholder="username123"
-                className="bg-dark-200 rounded-lg px-4 py-3 w-full text-light-100 placeholder:text-light-200/50 border border-dark-300 focus:border-primary focus:outline-none transition"
-              />
-            </div>
+          <input
+            name="email"
+            type="email"
+            placeholder="Email Address"
+            value={form.email}
+            onChange={handleChange}
+            required
+            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+          />
 
-            <div>
-              <label className="text-light-100 text-base font-semibold mb-2 block">
-                Mật khẩu
-              </label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                minLength={8}
-                placeholder="••••••••"
-                className="bg-dark-200 rounded-lg px-4 py-3 w-full text-light-100 placeholder:text-light-200/50 border border-dark-300 focus:border-primary focus:outline-none transition"
-              />
-              <p className="text-light-200/70 text-sm mt-1">
-                Tối thiểu 8 ký tự
-              </p>
-            </div>
+          <input
+            name="phoneNumber"
+            type="tel"
+            placeholder="Phone Number (0xxxxxxxxx or +84xxxxxxxxx)"
+            value={form.phoneNumber}
+            onChange={handleChange}
+            pattern="^(0|\\+84)[0-9]{9,10}$"
+            required
+            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+          />
 
-            <div>
-              <label className="text-light-100 text-base font-semibold mb-2 block">
-                Giới tính
-              </label>
-              <select
-                name="genderId"
-                value={formData.genderId}
-                onChange={handleChange}
-                required
-                className="bg-dark-200 rounded-lg px-4 py-3 w-full text-light-100 border border-dark-300 focus:border-primary focus:outline-none transition"
-              >
-                <option value="">-- Chọn giới tính --</option>
-                <option value="Male">Nam</option>
-                <option value="Female">Nữ</option>
-                <option value="Other">Khác</option>
-              </select>
-            </div>
+          <input
+            name="password"
+            type="password"
+            placeholder="Password (min 8 characters)"
+            value={form.password}
+            onChange={handleChange}
+            minLength={8}
+            required
+            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+          />
 
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="bg-primary hover:bg-primary/90 transition text-black font-semibold py-3 rounded-lg text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? "Đang xử lý..." : "Đăng ký"}
-            </button>
+          <input
+            name="confirmPassword"
+            type="password"
+            placeholder="Confirm Password"
+            value={form.confirmPassword}
+            onChange={handleChange}
+            required
+            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+          />
 
-            <p className="text-center text-light-200 text-sm">
-              Đã có tài khoản?{" "}
-              <button
-                type="button"
-                onClick={() => router.push("/user/login")}
-                className="text-primary font-semibold hover:opacity-90"
-              >
-                Đăng nhập ngay
-              </button>
-            </p>
-          </div>
+          <label className="flex items-center gap-3 text-sm text-white/85">
+            <input
+              type="checkbox"
+              name="agree"
+              checked={form.agree}
+              onChange={handleChange}
+              className="h-4 w-4 rounded border-white/50 bg-transparent"
+              required
+            />
+            I agree with the{" "}
+            <Link href="/terms" className="underline">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="underline">
+              Privacy policy
+            </Link>
+          </label>
 
-          {message && (
+          {message ? (
             <div
-              className={`mt-4 p-3 rounded-lg text-center ${
-                message.includes("✅")
-                  ? "bg-green-500/20 text-green-400 border border-green-500/50"
-                  : message.includes("⚠️")
-                  ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/50"
-                  : "bg-red-500/20 text-red-400 border border-red-500/50"
+              className={`rounded-[10px] border px-4 py-3 text-sm ${
+                message.type === "success"
+                  ? "border-green-500/40 bg-green-500/10 text-green-200"
+                  : "border-red-500/40 bg-red-500/10 text-red-200"
               }`}
             >
-              {message}
+              {message.text}
             </div>
-          )}
+          ) : null}
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full rounded-[10px] bg-[#1b1a55] px-4 py-3 text-center text-lg font-semibold text-white shadow disabled:opacity-60"
+          >
+            {isLoading ? "Creating account..." : "Sign up"}
+          </button>
+
+          <p className="text-sm text-white/80">
+            Already have an account?{" "}
+            <Link
+              href={`/user/login?next=${encodeURIComponent(nextPath)}`}
+              className="font-semibold underline"
+            >
+              Log in
+            </Link>
+          </p>
+        </form>
+
+        <div className="hidden overflow-hidden rounded-[25px] shadow-2xl lg:block">
+          <img
+            src={hero}
+            alt="Signup background"
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
         </div>
       </div>
     </div>

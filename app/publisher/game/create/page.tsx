@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AuthContext";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
 
 // ❌ XÓA publisherId khỏi interface
 interface GameForm {
@@ -147,7 +148,7 @@ export default function CreateGamePage() {
       console.log("📤 Sending game data:", form);
       console.log("🔑 Using token:", token.substring(0, 20) + "...");
 
-      const res = await fetch("http://localhost:3000/games", {
+      const res = await fetch(gameStoreApiUrl("/games"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Schibsted_Grotesk, Martian_Mono } from "next/font/google";
 import LightRays from "../components/LightRays";
-import NavBar from "../components/Navbar";
-import { AuthProvider } from "./context/AuthContext"; // <-- bạn đã import đúng
+import { AuthProvider } from "./context/AuthContext";
+import { StoreProvider } from "./context/StoreContext";
 import "./globals.css";
 
 const schibstedGrotesk = Schibsted_Grotesk({
@@ -29,27 +29,30 @@ export default function RootLayout({
     <html lang="en">
       <body
         className={`${schibstedGrotesk.variable} ${martianMono.variable} antialiased`}
+        suppressHydrationWarning
       >
         <AuthProvider>
-          <NavBar />
-          <div className="absolute inset-0 top-0 z-[-1] min-h-screen">
-            <LightRays
-              raysOrigin="top-center"
-              raysColor="#00ffff"
-              raysSpeed={1.5}
-              lightSpread={0.8}
-              rayLength={1.2}
-              followMouse={true}
-              mouseInfluence={0.1}
-              noiseAmount={0.1}
-              distortion={0.05}
-              className="custom-rays"
-            />
-          </div>
+          <StoreProvider>
+            <div className="absolute inset-0 top-0 z-[-1] min-h-screen">
+              <LightRays
+                raysOrigin="top-center"
+                raysColor="#00ffff"
+                raysSpeed={1.5}
+                lightSpread={0.8}
+                rayLength={1.2}
+                followMouse={true}
+                mouseInfluence={0.1}
+                noiseAmount={0.1}
+                distortion={0.05}
+                className="custom-rays"
+              />
+            </div>
 
-          <main>{children}</main>
+            <main>{children}</main>
+          </StoreProvider>
         </AuthProvider>
       </body>
     </html>
   );
 }
+

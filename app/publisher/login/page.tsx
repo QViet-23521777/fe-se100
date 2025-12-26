@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 import { usePublisher } from "@/app/context/PublisherContext";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
 
 // Icon Components
 const MailIcon = () => (
@@ -68,7 +69,7 @@ export default function PublisherLoginPage() {
     setMessage("");
 
     try {
-      const res = await fetch("http://localhost:3000/auth/publisher/login", {
+      const res = await fetch(gameStoreApiUrl("/auth/publisher/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
