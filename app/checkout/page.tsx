@@ -1,26 +1,7 @@
 "use client";
 
-import { TopBar } from "@/components/TopBar";
-import { useStore } from "@/app/context/StoreContext";
-import { useRouter } from "next/navigation";
-
-type PaymentMethod = "visa" | "mastercard" | "paypal" | "payoneer";
-
-type CardInfo = {
-  holder: string;
-  number: string;
-  expiry: string;
-  cvv: string;
-};
-
-const initialCard: CardInfo = {
-  holder: "",
-  number: "",
-  expiry: "",
-  cvv: "",
-};
-
-const savedVisa = "•••• •••• •••• 1234";
+import { useState } from "react";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
 
 const gallery = [
   "/assets/41257b534936f9a3c9376f415acb8f44d64be4bd.png",
@@ -40,76 +21,227 @@ const socials = [
 ];
 
 export default function CheckoutPage() {
-  const router = useRouter();
-  const { cart, subtotalCents, clearCart } = useStore();
-  const subtotal = subtotalCents / 100;
-  const canConfirm = cart.length > 0;
+  const [cart, setCart] = useState([
+    { id: 1, name: "Cyberpunk 2077", price: 29.99 },
+    { id: 2, name: "The Witcher 3", price: 39.99 },
+  ]);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [accountBalance, setAccountBalance] = useState<number | null>(null);
+
+  const subtotal = cart.reduce((sum, item) => sum + item.price, 0);
+  const canConfirm = cart.length > 0 && email && password;
+
+  const handleConfirmPayment = async () => {
+    if (!canConfirm) return;
+
+    setIsLoading(true);
+    setError("");
+    setSuccess(false);
+
+    try {
+      // Bước 1: Xác thực tài khoản
+      const res = await fetch(gameStoreApiUrl("/auth/customer/login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || "Email hoặc mật khẩu không đúng");
+      }
+
+      const data = await res.json();
+
+      // ✅ Kiểm tra response structure
+      if (!data?.token || !data?.user) {
+        throw new Error("Invalid response from server");
+      }
+
+      // ✅ Lấy accountBalance từ response
+      const balance = data.user.accountBalance ?? 0;
+      setAccountBalance(balance);
+
+      console.log("✅ Login successful:", {
+        email: data.user.email,
+        balance: balance,
+        subtotal: subtotal,
+      });
+
+      // Bước 2: Kiểm tra số dư
+      if (balance < subtotal) {
+        setError(
+          `Số dư không đủ! Bạn có $${balance.toFixed(
+            2
+          )}, cần $${subtotal.toFixed(2)}`
+        );
+        return;
+      }
+
+      // Bước 3: Thanh toán thành công
+      setSuccess(true);
+      setCart([]);
+
+      setTimeout(() => {
+        alert(
+          `✅ Thanh toán thành công!\n` +
+            `Số tiền: $${subtotal.toFixed(2)}\n` +
+            `Số dư ban đầu: $${balance.toFixed(2)}\n` +
+            `Số dư còn lại: $${(balance - subtotal).toFixed(2)}`
+        );
+      }, 500);
+    } catch (err) {
+      console.error("Payment error:", err);
+      setError(
+        err instanceof Error ? err.message : "Không thể kết nối đến server"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
-      <div className="flex w-full flex-col gap-10 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
-        <TopBar />
+    <div className="min-h-screen w-full bg-[#070f2b] text-white p-6">
+      <div className="flex w-full flex-col gap-10 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src={logo} alt="GameVerse" className="h-10 w-10" />
+            <span className="text-xl font-semibold">GameVerse</span>
+          </div>
+        </div>
 
         <h1 className="text-4xl font-bold">Checkout</h1>
 
         <div className="grid gap-8 lg:grid-cols-[1.5fr_0.75fr]">
           <div className="space-y-6">
-            <PaymentSection />
-            <SavedPayment />
+            {/* Account Authentication Section */}
+            <div className="space-y-6 rounded-[20px] bg-gradient-to-b from-white/10 to-black/15 p-6 backdrop-blur">
+              <h2 className="text-2xl font-semibold">Xác thực tài khoản</h2>
+              <p className="text-sm text-white/70">
+                Vui lòng đăng nhập để hoàn tất thanh toán
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+                  />
+                </div>
+
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Mật khẩu"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((p) => !p)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white transition"
+                    aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                  >
+                    {showPassword ? (
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+                        <path
+                          d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+                        <path
+                          d="M3 3l18 18"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M10.58 10.58A3 3 0 0 0 12 15a3 3 0 0 0 2.12-.88"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M9.88 5.09A10.3 10.3 0 0 1 12 5c6.4 0 10 7 10 7a17.1 17.1 0 0 1-2.64 3.78"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M6.34 6.34C3.8 8.16 2 12 2 12s3.6 7 10 7c1.2 0 2.3-.2 3.27-.55"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+
+                {/* ✅ Display Account Balance if logged in */}
+                {accountBalance !== null && (
+                  <div className="rounded-[10px] border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-blue-200">Số dư tài khoản:</span>
+                      <span className="text-xl font-semibold text-blue-100">
+                        ${accountBalance.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="rounded-[10px] border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    {error}
+                  </div>
+                )}
+
+                {success && (
+                  <div className="rounded-[10px] border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+                    ✅ Thanh toán thành công!
+                  </div>
+                )}
+              </div>
+            </div>
+
             <Gallery />
           </div>
 
           <OrderSummary
             subtotal={subtotal}
             canConfirm={canConfirm}
-            onConfirm={() => {
-              clearCart();
-              router.push("/");
-            }}
+            isLoading={isLoading}
+            onConfirm={handleConfirmPayment}
           />
         </div>
 
         <Footer />
-      </div>
-    </div>
-  );
-}
-
-function PaymentSection() {
-  return (
-    <div className="space-y-6 rounded-[20px] bg-gradient-to-b from-white/10 to-black/15 p-6 backdrop-blur">
-      <h2 className="text-2xl font-semibold">Payment Method</h2>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <PaymentCard brand="visa" active />
-        <PaymentCard brand="mastercard" />
-        <PaymentCard brand="paypal" />
-        <PaymentCard brand="payoneer" />
-      </div>
-
-      <div className="space-y-4">
-        <Input placeholder="Card Holder Name" />
-        <Input placeholder="Card Number" />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input placeholder="Expiry Date" />
-          <Input placeholder="CVV" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SavedPayment() {
-  return (
-    <div className="space-y-4 rounded-[20px] bg-gradient-to-b from-white/10 to-black/15 p-6 backdrop-blur">
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-px bg-white/20" />
-        <p className="text-lg font-semibold">or</p>
-        <div className="flex-1 h-px bg-white/20" />
-      </div>
-      <p className="text-xl font-semibold">Pay with saved method</p>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SavedCard brand="visa" number={savedVisa} />
-        <SavedCard brand="paypal" number="Paypal" />
       </div>
     </div>
   );
@@ -148,14 +280,16 @@ function Gallery() {
 function OrderSummary({
   subtotal,
   canConfirm,
+  isLoading,
   onConfirm,
 }: {
   subtotal: number;
   canConfirm: boolean;
+  isLoading: boolean;
   onConfirm: () => void;
 }) {
   return (
-    <aside className="space-y-4 rounded-[18px] bg-gradient-to-b from-white/10 to-black/20 p-6 shadow-2xl">
+    <aside className="space-y-4 rounded-[18px] bg-gradient-to-b from-white/10 to-black/20 p-6 shadow-2xl h-fit">
       <h2 className="text-2xl font-semibold">Order Summary</h2>
       <SummaryRow label="Subtotal" value={`$${subtotal.toFixed(2)}`} />
       <SummaryRow label="Discount" value="$00.00" />
@@ -167,13 +301,20 @@ function OrderSummary({
       <button
         type="button"
         onClick={onConfirm}
-        disabled={!canConfirm}
-        className={`w-full rounded-[12px] bg-[#1b1a55] px-4 py-3 text-center text-sm font-semibold ${
-          canConfirm ? "" : "opacity-50 cursor-not-allowed"
+        disabled={!canConfirm || isLoading}
+        className={`w-full rounded-[12px] bg-[#1b1a55] px-4 py-3 text-center text-sm font-semibold transition ${
+          canConfirm && !isLoading
+            ? "hover:bg-[#252471]"
+            : "opacity-50 cursor-not-allowed"
         }`}
       >
-        Confirm Payment
+        {isLoading ? "Đang xử lý..." : "Confirm Payment"}
       </button>
+      {!canConfirm && (
+        <p className="text-xs text-white/60 text-center">
+          Vui lòng nhập email và mật khẩu
+        </p>
+      )}
     </aside>
   );
 }
@@ -184,49 +325,6 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <span className="text-white">{value}</span>
     </div>
-  );
-}
-
-function PaymentCard({ brand, active }: { brand: PaymentMethod; active?: boolean }) {
-  const logos: Record<PaymentMethod, string> = {
-    visa: "/assets/0330a8b8c36763d74b8be98cbac253ef243e8163.png",
-    mastercard: "/assets/0edf57aebdd94b78202290f6dcae0459bfe5b4b4.png",
-    paypal: "/assets/49b272b182ca363870ee17abeb3516cd9b20eb52.png",
-    payoneer: "/assets/5abc0e55a1382777afdb381f51650108b607c589.png",
-  };
-  return (
-    <div
-      className={`flex h-20 items-center justify-center rounded-[12px] bg-white ${
-        active ? "" : "opacity-50"
-      }`}
-    >
-      <img src={logos[brand]} alt={brand} className="h-8 object-contain" />
-    </div>
-  );
-}
-
-function SavedCard({ brand, number }: { brand: PaymentMethod | "paypal"; number: string }) {
-  const label = brand === "paypal" ? "Paypal" : number;
-  const logo =
-    brand === "paypal"
-      ? "/assets/49b272b182ca363870ee17abeb3516cd9b20eb52.png"
-      : "/assets/0330a8b8c36763d74b8be98cbac253ef243e8163.png";
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-14 w-20 items-center justify-center rounded-[10px] bg-white">
-        <img src={logo} alt={brand} className="h-7 object-contain" />
-      </div>
-      <p className="text-sm text-white">{label}</p>
-    </div>
-  );
-}
-
-function Input({ placeholder }: { placeholder: string }) {
-  return (
-    <input
-      placeholder={placeholder}
-      className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
-    />
   );
 }
 
@@ -246,22 +344,28 @@ function Footer() {
         <div className="grid grid-cols-2 gap-10 text-sm">
           <div className="space-y-2">
             <p className="text-base font-semibold text-white">My Account</p>
-            <a href="/user/login" className="block text-white/80">
+            <a
+              href="/user/login"
+              className="block text-white/80 hover:text-white"
+            >
               My Account
             </a>
-            <a href="/user/orders" className="block text-white/80">
+            <a
+              href="/user/orders"
+              className="block text-white/80 hover:text-white"
+            >
               My Orders
             </a>
           </div>
           <div className="space-y-2">
             <p className="text-base font-semibold text-white">Support</p>
-            <a href="/terms" className="block text-white/80">
+            <a href="/terms" className="block text-white/80 hover:text-white">
               Terms and conditions
             </a>
-            <a href="/privacy" className="block text-white/80">
+            <a href="/privacy" className="block text-white/80 hover:text-white">
               Privacy and cookie policy
             </a>
-            <a href="/refunds" className="block text-white/80">
+            <a href="/refunds" className="block text-white/80 hover:text-white">
               Refund policy
             </a>
           </div>
@@ -273,7 +377,13 @@ function Footer() {
         </p>
         <div className="flex items-center gap-3">
           {socials.map((icon) => (
-            <img key={icon} src={icon} alt="social" className="h-8 w-8" loading="lazy" />
+            <img
+              key={icon}
+              src={icon}
+              alt="social"
+              className="h-8 w-8"
+              loading="lazy"
+            />
           ))}
         </div>
       </div>

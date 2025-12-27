@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
-import { AddToCartPillButton, WishlistIconButton } from "@/components/StoreActions";
+import { useRouter } from "next/navigation";
+import { useRef, useState, useEffect } from "react";
+import { useAuth } from "@/app/context/AuthContext";
+import {
+  AddToCartPillButton,
+  WishlistIconButton,
+} from "@/components/StoreActions";
 
 export type CarouselItem = {
   id: string;
@@ -70,6 +75,11 @@ function clampDiscount(value: number) {
   return Math.max(0, Math.min(99, Math.round(value)));
 }
 
+function formatUsd(price: number | undefined | null): string {
+  if (price == null || !Number.isFinite(price)) return "$0.00";
+  return `$${price.toFixed(2)}`;
+}
+
 export default function CarouselRow({
   title,
   items,
@@ -81,21 +91,30 @@ export default function CarouselRow({
   id?: string;
   ctaLabel?: string;
 }) {
+  const router = useRouter();
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const { user, token } = useAuth();
+
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const isLoggedIn = isMounted && Boolean(user) && Boolean(token);
 
   const scrollByAmount = (dir: "left" | "right") => {
     const el = scrollerRef.current;
     if (!el) return;
     const amount = Math.max(320, Math.round(el.clientWidth * 0.85));
-    el.scrollBy({ left: dir === "left" ? -amount : amount, behavior: "smooth" });
+    el.scrollBy({
+      left: dir === "left" ? -amount : amount,
+      behavior: "smooth",
+    });
   };
 
   return (
-    <section
-      id={id}
-      aria-label={title}
-      className="flex flex-col gap-5"
-    >
+    <section id={id} aria-label={title} className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-4">
         <h2 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
           {title}
@@ -128,24 +147,31 @@ export default function CarouselRow({
           ref={scrollerRef}
           className="no-scrollbar flex snap-x snap-mandatory gap-6 overflow-x-auto scroll-smooth px-1 pb-2"
         >
-          {items.map((item) => {
+          {items.map((item, index) => {
             const asNumber = Number(item.id);
             const steamAppId =
-              Number.isFinite(asNumber) && Number.isInteger(asNumber) ? asNumber : undefined;
+              Number.isFinite(asNumber) && Number.isInteger(asNumber)
+                ? asNumber
+                : undefined;
+
+            const uniqueKey = steamAppId
+              ? `steam-${steamAppId}`
+              : `item-${index}-${item.id || `fallback-${index}`}`;
+
             const href = steamAppId ? `/product/${steamAppId}` : "/browse";
             const storeItem = {
               steamAppId,
               slug: steamAppId ? undefined : item.id,
               name: item.title,
               image: item.imageSrc,
-              priceLabel: `$${item.price.toFixed(2)}`,
+              priceLabel: formatUsd(item.price),
               originalPriceLabel: item.originalPrice
-                ? `$${item.originalPrice.toFixed(2)}`
+                ? formatUsd(item.originalPrice)
                 : null,
             };
             const discount = clampDiscount(
               item.discountPercent ??
-                (item.originalPrice
+                (item.originalPrice && item.price != null
                   ? ((item.originalPrice - item.price) / item.originalPrice) *
                     100
                   : NaN)
@@ -153,7 +179,7 @@ export default function CarouselRow({
 
             return (
               <Link
-                key={item.id}
+                key={uniqueKey}
                 href={href}
                 className="group w-[280px] shrink-0 snap-start overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:w-[320px]"
               >
@@ -165,10 +191,12 @@ export default function CarouselRow({
                     loading="lazy"
                   />
 
-                  <WishlistIconButton
-                    item={storeItem}
-                    className="absolute left-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white/80 backdrop-blur-md transition hover:bg-black/40"
-                  />
+                  {isMounted && isLoggedIn && (
+                    <WishlistIconButton
+                      item={storeItem}
+                      className="absolute left-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/30 text-white/80 backdrop-blur-md transition hover:bg-black/40"
+                    />
+                  )}
                 </div>
 
                 <div className="mt-4 flex items-end justify-between gap-4">
@@ -184,20 +212,37 @@ export default function CarouselRow({
                       )}
                       {item.originalPrice ? (
                         <span className="font-martian-mono text-xs text-white/50 line-through">
-                          ${item.originalPrice.toFixed(2)}
+                          {formatUsd(item.originalPrice)}
                         </span>
                       ) : null}
                       <span className="font-martian-mono text-xs text-white/80">
-                        ${item.price.toFixed(2)}
+                        {formatUsd(item.price)}
                       </span>
                     </div>
                   </div>
 
-                  <AddToCartPillButton
-                    item={storeItem}
-                    label={ctaLabel}
-                    className="shrink-0 rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/15"
-                  />
+                  {!isMounted ? (
+                    <div className="h-9 w-20 shrink-0 rounded-full bg-white/10" />
+                  ) : isLoggedIn ? (
+                    <AddToCartPillButton
+                      item={storeItem}
+                      label={ctaLabel}
+                      className="shrink-0 rounded-full bg-white/10 px-5 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/15"
+                    />
+                  ) : (
+                    // ✅ FIX: Use button instead of nested Link
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        router.push("/user/login");
+                      }}
+                      className="shrink-0 rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    >
+                      Login
+                    </button>
+                  )}
                 </div>
               </Link>
             );

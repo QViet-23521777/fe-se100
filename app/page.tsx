@@ -5,7 +5,9 @@ import {
   WishlistIconButton,
   WishlistTextButton,
 } from "@/components/StoreActions";
-import CarouselRow, { type CarouselItem } from "@/components/landing/CarouselRow";
+import CarouselRow, {
+  type CarouselItem,
+} from "@/components/landing/CarouselRow";
 import { fetchRandomSteamApps, type SteamApp } from "@/lib/steam-apps";
 
 type GameItem = {
@@ -57,7 +59,8 @@ const PRICE_POINTS = [
 ];
 const DISCOUNT_POINTS = [10, 15, 20, 25, 30, 40, 50, 60];
 
-function formatUsd(price: number) {
+function formatUsd(price: number | undefined | null) {
+  if (price == null || !Number.isFinite(price)) return "$0.00";
   return `$${price.toFixed(2)}`;
 }
 
@@ -73,8 +76,8 @@ function parseUsdLabel(label: string | undefined) {
 
 function steamHeaderUrl(app: SteamApp) {
   return (
-    app.avatarUrl ??
-    `https://cdn.cloudflare.steamstatic.com/steam/apps/${app.steamAppId}/header.jpg`
+    app.imageUrl ??
+    `https://cdn.cloudflare.steamstatic.com/steam/apps/${app.id}/header.jpg`
   );
 }
 
@@ -87,8 +90,9 @@ function shuffle<T>(input: T[]) {
   return array;
 }
 
-function pseudoOriginalPrice(steamAppId: number) {
-  const idx = Math.abs(steamAppId) % PRICE_POINTS.length;
+function pseudoOriginalPrice(steamAppId: number | string) {
+  const id = typeof steamAppId === "string" ? Number(steamAppId) : steamAppId;
+  const idx = Math.abs(id) % PRICE_POINTS.length;
   return PRICE_POINTS[idx];
 }
 
@@ -97,15 +101,22 @@ function pseudoDiscountPercent(steamAppId: number) {
   return DISCOUNT_POINTS[idx];
 }
 
-function toCarouselItem(app: SteamApp, kind: "default" | "deal" = "default"): CarouselItem {
-  const original = pseudoOriginalPrice(app.steamAppId);
+function toCarouselItem(
+  app: SteamApp,
+  kind: "default" | "deal" = "default"
+): CarouselItem {
+  const steamAppId = typeof app.id === "string" ? Number(app.id) : app.id;
+  const original = pseudoOriginalPrice(steamAppId);
   const imageSrc = steamHeaderUrl(app);
 
   if (kind === "deal") {
-    const discountPercent = pseudoDiscountPercent(app.steamAppId);
-    const price = Math.max(0, Math.round(original * (100 - discountPercent)) / 100);
+    const discountPercent = pseudoDiscountPercent(steamAppId);
+    const price = Math.max(
+      0,
+      Math.round(original * (100 - discountPercent)) / 100
+    );
     return {
-      id: String(app.steamAppId),
+      id: String(steamAppId),
       title: app.name,
       price,
       originalPrice: original,
@@ -115,7 +126,7 @@ function toCarouselItem(app: SteamApp, kind: "default" | "deal" = "default"): Ca
   }
 
   return {
-    id: String(app.steamAppId),
+    id: String(steamAppId),
     title: app.name,
     price: original,
     imageSrc,
@@ -126,17 +137,18 @@ function toSteamGameItem(
   app: SteamApp,
   options: { cta: string; kind?: "default" | "deal" }
 ): GameItem {
-  const original = pseudoOriginalPrice(app.steamAppId);
+  const steamAppId = typeof app.id === "string" ? Number(app.id) : app.id;
+  const original = pseudoOriginalPrice(steamAppId);
   const image = steamHeaderUrl(app);
 
   if (options.kind === "deal") {
-    const discount = pseudoDiscountPercent(app.steamAppId);
+    const discount = pseudoDiscountPercent(steamAppId);
     const discounted = Math.max(
       0,
       Math.round(original * (100 - discount)) / 100
     );
     return {
-      steamAppId: app.steamAppId,
+      steamAppId,
       title: app.name,
       price: formatUsd(discounted),
       originalPrice: formatUsd(original),
@@ -147,7 +159,7 @@ function toSteamGameItem(
   }
 
   return {
-    steamAppId: app.steamAppId,
+    steamAppId,
     title: app.name,
     price: formatUsd(original),
     image,
@@ -449,9 +461,10 @@ function heroTitleLines(title: string) {
   if (words.length <= 4) return words.map((w) => w.toUpperCase());
 
   const midpoint = Math.ceil(words.length / 2);
-  return [words.slice(0, midpoint).join(" "), words.slice(midpoint).join(" ")].map((line) =>
-    line.toUpperCase()
-  );
+  return [
+    words.slice(0, midpoint).join(" "),
+    words.slice(midpoint).join(" "),
+  ].map((line) => line.toUpperCase());
 }
 
 function Hero({ featured }: { featured: GameItem }) {
@@ -486,7 +499,11 @@ function Hero({ featured }: { featured: GameItem }) {
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <Link
-                href={featured.steamAppId ? `/product/${featured.steamAppId}` : "/browse"}
+                href={
+                  featured.steamAppId
+                    ? `/product/${featured.steamAppId}`
+                    : "/browse"
+                }
                 className="rounded-full bg-white px-6 py-3 text-base font-semibold text-[#1b1a55] shadow"
               >
                 Buy Now
@@ -496,7 +513,9 @@ function Hero({ featured }: { featured: GameItem }) {
                 label="Add to Wishlist"
                 className="rounded-full border border-white/80 px-6 py-3 text-base font-semibold text-white"
               />
-              <span className="ml-2 text-2xl font-semibold text-white">{featured.price}</span>
+              <span className="ml-2 text-2xl font-semibold text-white">
+                {featured.price}
+              </span>
             </div>
           </div>
           <div className="flex items-center justify-end gap-3">
@@ -529,15 +548,16 @@ export default async function Home() {
       process.env.NEXT_PUBLIC_STEAM_APPS_MAX_SKIP ??
       "85000"
   );
-  const maxSkipGuess = Number.isFinite(maxSkipGuessRaw) ? maxSkipGuessRaw : 85000;
+  const maxSkipGuess = Number.isFinite(maxSkipGuessRaw)
+    ? maxSkipGuessRaw
+    : 85000;
   const perRow = 10;
   const desiredTotal = 1 + perRow * 4;
   const steamApps = await fetchRandomSteamApps({
     limit: Math.min(desiredTotal * 2, 100),
-    maxSkipGuess,
   });
   const uniqueSteamApps = steamApps.filter((app, idx, arr) => {
-    const firstIdx = arr.findIndex((other) => other.steamAppId === app.steamAppId);
+    const firstIdx = arr.findIndex((other) => other.id === app.id);
     return firstIdx === idx;
   });
   const shuffledSteamApps = shuffle(uniqueSteamApps);
@@ -585,13 +605,20 @@ export default async function Home() {
       id: game.steamAppId ? String(game.steamAppId) : game.title,
       title: game.title,
       price: parseUsdLabel(game.price),
-      originalPrice: game.originalPrice ? parseUsdLabel(game.originalPrice) : undefined,
-      discountPercent: Number.isFinite(discountPercent) ? discountPercent : undefined,
+      originalPrice: game.originalPrice
+        ? parseUsdLabel(game.originalPrice)
+        : undefined,
+      discountPercent: Number.isFinite(discountPercent)
+        ? discountPercent
+        : undefined,
       imageSrc: game.image,
     };
   });
 
-  function repeatToLength<T extends { id: string }>(items: T[], target: number) {
+  function repeatToLength<T extends { id: string }>(
+    items: T[],
+    target: number
+  ) {
     if (items.length >= target) return items.slice(0, target);
     if (items.length === 0) return [];
     const out: T[] = [];
@@ -685,9 +712,9 @@ export default async function Home() {
                 <span className="text-2xl font-semibold">GameVerse</span>
               </div>
               <p className="max-w-xl text-sm text-white/75">
-                GameVerse — Where every gamer levels up! From epic AAA adventures to
-                indie gems, grab the hottest deals on PC, Xbox, PlayStation &
-                Nintendo. Play more, pay less. 🎮
+                GameVerse — Where every gamer levels up! From epic AAA
+                adventures to indie gems, grab the hottest deals on PC, Xbox,
+                PlayStation & Nintendo. Play more, pay less. 🎮
               </p>
             </div>
 

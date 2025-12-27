@@ -1,13 +1,16 @@
 import Link from "next/link";
 
 import { TopBar } from "@/components/TopBar";
-import { AddToCartPillButton, WishlistIconButton } from "@/components/StoreActions";
+import {
+  AddToCartPillButton,
+  WishlistIconButton,
+} from "@/components/StoreActions";
 import { fetchSteamApps, type SteamApp } from "@/lib/steam-apps";
 
 export const dynamic = "force-dynamic";
 
 type BrowseCard = {
-  steamAppId?: number;
+  steamAppId?: string;
   title: string;
   price: string;
   originalPrice?: string;
@@ -17,30 +20,24 @@ type BrowseCard = {
 
 const heroBanner = "/assets/6ae5fe37d055bdf5609d1bde8dd81809fa9e9ba3.png";
 
-const PRICE_POINTS = [
-  9.99, 14.99, 19.99, 24.99, 29.99, 39.99, 49.99, 59.99, 69.99,
-];
-
 function formatUsd(price: number) {
   return `$${price.toFixed(2)}`;
 }
 
-function pseudoOriginalPrice(steamAppId: number) {
-  const idx = Math.abs(steamAppId) % PRICE_POINTS.length;
-  return PRICE_POINTS[idx];
-}
-
 function steamHeaderUrl(app: SteamApp) {
-  return (
-    app.avatarUrl ??
-    `https://cdn.cloudflare.steamstatic.com/steam/apps/${app.steamAppId}/header.jpg`
-  );
+  return app.imageUrl || "/assets/placeholder.png";
 }
 
 function Card({ card }: { card: BrowseCard }) {
   const href = card.steamAppId ? `/product/${card.steamAppId}` : "/browse";
+
+  // Convert steamAppId to number for store actions
+  const steamAppIdNumber = card.steamAppId
+    ? Number(card.steamAppId)
+    : undefined;
+
   const storeItem = {
-    steamAppId: card.steamAppId,
+    steamAppId: steamAppIdNumber,
     name: card.title,
     image: card.image,
     priceLabel: card.price,
@@ -110,7 +107,9 @@ export default async function BrowsePage({
   const q = (readParam(resolvedParams, "q") ?? "").trim();
   const pageRaw = readParam(resolvedParams, "page") ?? "1";
   const pageNumberRaw = Number(pageRaw);
-  const page = Number.isFinite(pageNumberRaw) ? Math.max(1, Math.floor(pageNumberRaw)) : 1;
+  const page = Number.isFinite(pageNumberRaw)
+    ? Math.max(1, Math.floor(pageNumberRaw))
+    : 1;
 
   const limit = 24;
   const skip = (page - 1) * limit;
@@ -121,12 +120,30 @@ export default async function BrowsePage({
     limit,
   });
 
-  const cards: BrowseCard[] = steamApps.map((app) => ({
-    steamAppId: app.steamAppId,
-    title: app.name,
-    price: formatUsd(pseudoOriginalPrice(app.steamAppId)),
-    image: steamHeaderUrl(app),
-  }));
+  // Map API response to cards with real price data
+  const cards: BrowseCard[] = steamApps.map((app) => {
+    const hasDiscount =
+      app.discountPrice != null &&
+      app.originalPrice != null &&
+      app.discountPrice < app.originalPrice;
+
+    const discountPercent = hasDiscount
+      ? Math.round(
+          ((app.originalPrice! - app.discountPrice!) / app.originalPrice!) * 100
+        )
+      : 0;
+
+    const currentPrice = app.discountPrice ?? app.originalPrice ?? 0;
+
+    return {
+      steamAppId: app.id,
+      title: app.name,
+      price: currentPrice > 0 ? formatUsd(currentPrice) : "Free",
+      originalPrice: hasDiscount ? formatUsd(app.originalPrice!) : undefined,
+      discount: hasDiscount ? `-${discountPercent}%` : undefined,
+      image: steamHeaderUrl(app),
+    };
+  });
 
   const showApiHint = cards.length === 0 && !q;
   const hasNext = cards.length === limit;
@@ -172,8 +189,9 @@ export default async function BrowsePage({
           </form>
           {q ? (
             <p className="text-sm text-white/70">
-              Showing results for <span className="font-semibold text-white">{q}</span> (page{" "}
-              {page})
+              Showing results for{" "}
+              <span className="font-semibold text-white">{q}</span> (page {page}
+              )
             </p>
           ) : (
             <p className="text-sm text-white/70">Page {page}</p>
@@ -191,11 +209,16 @@ export default async function BrowsePage({
             />
             <div className="absolute inset-0 bg-gradient-to-r from-[#ff8d10] via-[#ff8d10]/40 to-transparent opacity-70" />
             <div className="relative flex h-full flex-col justify-center gap-3 px-6">
-              <p className="text-lg font-semibold uppercase text-white">Up to 70% off</p>
-              <p className="text-4xl font-black text-white drop-shadow">Summer Savings</p>
+              <p className="text-lg font-semibold uppercase text-white">
+                Up to 70% off
+              </p>
+              <p className="text-4xl font-black text-white drop-shadow">
+                Summer Savings
+              </p>
               <p className="max-w-xl text-sm text-white/90">
-                Make this summer unforgettable with GameVerse at unbeatable prices.
-                Grab your favorites now — up to 70% off for a limited time!
+                Make this summer unforgettable with GameVerse at unbeatable
+                prices. Grab your favorites now — up to 70% off for a limited
+                time!
               </p>
               <Link
                 href="#grid"
@@ -211,13 +234,13 @@ export default async function BrowsePage({
           <div className="flex-1 space-y-6" id="grid">
             {showApiHint ? (
               <div className="rounded-2xl border border-white/10 bg-[#0c143d]/60 p-5 text-sm text-white/75 shadow-xl">
-                Start the `game-store-api` server to load Steam games in Browse.
+                Start the `game-store-api` server to load games in Browse.
               </div>
             ) : null}
 
-            {cards.length === 0 ? (
+            {cards.length === 0 && q ? (
               <div className="rounded-2xl border border-white/10 bg-[#0c143d]/60 p-5 text-sm text-white/75 shadow-xl">
-                No games found.
+                No games found for "{q}".
               </div>
             ) : null}
 
@@ -227,25 +250,31 @@ export default async function BrowsePage({
               ))}
             </div>
 
-            <div className="flex items-center justify-center gap-3 pt-4 text-sm text-white/70">
-              <Link
-                href={prevHref}
-                className={`rounded-full bg-[#1b1a55] px-4 py-2 text-white transition ${
-                  page > 1 ? "hover:bg-[#26266d]" : "pointer-events-none opacity-50"
-                }`}
-              >
-                Prev
-              </Link>
-              <span className="px-2">Page {page}</span>
-              <Link
-                href={nextHref}
-                className={`rounded-full bg-[#1b1a55] px-4 py-2 text-white transition ${
-                  hasNext ? "hover:bg-[#26266d]" : "pointer-events-none opacity-50"
-                }`}
-              >
-                Next
-              </Link>
-            </div>
+            {cards.length > 0 && (
+              <div className="flex items-center justify-center gap-3 pt-4 text-sm text-white/70">
+                <Link
+                  href={prevHref}
+                  className={`rounded-full bg-[#1b1a55] px-4 py-2 text-white transition ${
+                    page > 1
+                      ? "hover:bg-[#26266d]"
+                      : "pointer-events-none opacity-50"
+                  }`}
+                >
+                  Prev
+                </Link>
+                <span className="px-2">Page {page}</span>
+                <Link
+                  href={nextHref}
+                  className={`rounded-full bg-[#1b1a55] px-4 py-2 text-white transition ${
+                    hasNext
+                      ? "hover:bg-[#26266d]"
+                      : "pointer-events-none opacity-50"
+                  }`}
+                >
+                  Next
+                </Link>
+              </div>
+            )}
           </div>
 
           <aside className="w-full max-w-xs space-y-6 rounded-2xl bg-[#0c143d] p-5 shadow-xl lg:sticky lg:top-6">
@@ -259,15 +288,17 @@ export default async function BrowsePage({
               Keywords
             </div>
             <div className="space-y-4 text-white/80">
-              {["Sort by", "Genres", "Price", "Platform", "Ratings"].map((label) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-between rounded-lg px-1 py-2"
-                >
-                  <span className="text-lg">{label}</span>
-                  <span className="text-xl text-white/60">›</span>
-                </div>
-              ))}
+              {["Sort by", "Genres", "Price", "Platform", "Ratings"].map(
+                (label) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-between rounded-lg px-1 py-2"
+                  >
+                    <span className="text-lg">{label}</span>
+                    <span className="text-xl text-white/60">›</span>
+                  </div>
+                )
+              )}
             </div>
           </aside>
         </div>
@@ -275,4 +306,3 @@ export default async function BrowsePage({
     </div>
   );
 }
-

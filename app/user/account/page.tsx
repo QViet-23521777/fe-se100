@@ -182,37 +182,49 @@ function ActionCard({ option }: { option: Option }) {
 
 export default function AccountOptionsPage() {
   const router = useRouter();
-  const { user, token, logout } = useAuth();
-  const [mounted, setMounted] = useState(false);
+  const { user, token, logout, isLoading } = useAuth();
 
-  useEffect(() => setMounted(true), []);
-
+  // ✅ Redirect ngay khi biết chắc chưa login
   useEffect(() => {
-    if (!mounted) return;
-    if (!token) {
+    if (!isLoading && !token) {
       router.replace(`/user/login?next=${encodeURIComponent("/user/account")}`);
     }
-  }, [mounted, router, token]);
+  }, [isLoading, router, token]);
 
   const gamerNumber = useMemo(() => {
     const input = user?.id ?? user?.email ?? user?.name ?? "gamer";
     return hashToSixDigits(String(input));
   }, [user?.email, user?.id, user?.name]);
 
-  if (!mounted) {
+  // ✅ Loading state
+  if (isLoading) {
     return (
       <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
         <div className="flex w-full flex-col gap-12 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
           <TopBar />
-          <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/70 shadow-xl">
-            Loading account…
+          <div className="flex items-center justify-center py-20">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
           </div>
         </div>
       </div>
     );
   }
 
-  const displayName = user?.name ?? "Gamer";
+  // ✅ Not logged in - show nothing (will redirect)
+  if (!token || !user) {
+    return (
+      <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
+        <div className="flex w-full flex-col gap-12 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
+          <TopBar />
+          <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/70 shadow-xl text-center">
+            Redirecting to login...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const displayName = user.name ?? "Gamer";
 
   return (
     <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
@@ -287,9 +299,9 @@ export default function AccountOptionsPage() {
               <span className="text-xl font-semibold">GameVerse</span>
             </div>
             <div className="space-y-2 max-w-xl text-sm text-white/80">
-              GameVerse — Where every gamer levels up! From epic AAA adventures to indie
-              gems, grab the hottest deals on PC, Xbox, PlayStation & Nintendo. Play
-              more, pay less.
+              GameVerse — Where every gamer levels up! From epic AAA adventures
+              to indie gems, grab the hottest deals on PC, Xbox, PlayStation &
+              Nintendo. Play more, pay less.
             </div>
             <div className="grid grid-cols-2 gap-10 text-sm">
               <div className="space-y-2">
@@ -336,4 +348,3 @@ export default function AccountOptionsPage() {
     </div>
   );
 }
-

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { TopBarSearch } from "@/components/TopBarSearch";
 import { useStore } from "@/app/context/StoreContext";
 import { useAuth } from "@/app/context/AuthContext";
 
 type Props = {
-  active?: "home" | "browse" | "news" | "about";
+  active?: "home" | "browse" | "upload" | "about";
 };
 
 const logo = "/assets/figma-logo.svg";
@@ -83,6 +83,7 @@ export function TopBar({ active = "home" }: Props) {
   const { cartCount, wishlistCount } = useStore();
   const { user, token } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -114,10 +115,33 @@ export function TopBar({ active = "home" }: Props) {
 
   const showAuthed = mounted && Boolean(user) && Boolean(token);
 
-  const links: { href: string; label: string; key: Props["active"] }[] = [
+  // ✅ Xử lý click vào "Upload Game"
+  const handleUploadGameClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    // Nếu đã đăng nhập với tài khoản publisher
+    if (user && token && user.accountType === "publisher" && user.id) {
+      router.push(`/publisher/game/${user.id}`);
+    } else {
+      // Chưa đăng nhập hoặc không phải publisher → chuyển đến login
+      router.push("/publisher/login");
+    }
+  };
+
+  const links: {
+    href: string;
+    label: string;
+    key: Props["active"];
+    onClick?: (e: React.MouseEvent) => void;
+  }[] = [
     { href: "/", label: "Home", key: "home" },
     { href: "/browse", label: "Browse", key: "browse" },
-    { href: "/news", label: "News", key: "news" },
+    {
+      href: "#",
+      label: "Upload Game",
+      key: "upload",
+      onClick: handleUploadGameClick,
+    },
     { href: "/about", label: "About", key: "about" },
   ];
 
@@ -129,17 +153,33 @@ export function TopBar({ active = "home" }: Props) {
           <span className="text-lg font-semibold text-white">GameVerse</span>
         </Link>
         <div className="hidden items-center gap-8 text-sm text-white/80 md:flex">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`transition-colors ${
-                active === link.key ? "font-semibold text-white" : "text-white/75"
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {links.map((link) =>
+            link.onClick ? (
+              <button
+                key={link.label}
+                onClick={link.onClick}
+                className={`transition-colors ${
+                  active === link.key
+                    ? "font-semibold text-white"
+                    : "text-white/75 hover:text-white"
+                }`}
+              >
+                {link.label}
+              </button>
+            ) : (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`transition-colors ${
+                  active === link.key
+                    ? "font-semibold text-white"
+                    : "text-white/75 hover:text-white"
+                }`}
+              >
+                {link.label}
+              </Link>
+            )
+          )}
         </div>
       </div>
 

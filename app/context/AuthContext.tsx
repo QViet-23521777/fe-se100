@@ -1,13 +1,19 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 
 interface User {
   id?: string;
   name?: string;
   email?: string;
-  accountType?: "customer" | "publisher" | "admin"; // ✅ Đã có rồi
-  publisherName?: string; // ✅ THÊM: Tên publisher (nếu là publisher)
+  accountType?: "customer" | "publisher" | "admin";
+  publisherName?: string;
 }
 
 interface AuthContextType {
@@ -15,29 +21,52 @@ interface AuthContextType {
   token: string | null;
   login: (user: User, token: string) => void;
   logout: () => void;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      if (typeof window === "undefined") return null;
-      const stored = localStorage.getItem("user");
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [token, setToken] = useState<string | null>(() => {
-    try {
-      if (typeof window === "undefined") return null;
-      return localStorage.getItem("token");
-    } catch {
-      return null;
+  // ✅ OPTIMIZED: Chỉ load từ localStorage, KHÔNG validate
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setIsLoading(false);
+      return;
     }
-  });
+
+    try {
+      const storedUser = localStorage.getItem("user");
+      const storedToken = localStorage.getItem("token");
+
+      // Không có data → skip
+      if (!storedUser || !storedToken) {
+        setIsLoading(false);
+        return;
+      }
+
+      const parsedUser = JSON.parse(storedUser);
+
+      // Validate cơ bản
+      if (!parsedUser || (!parsedUser.id && !parsedUser.email)) {
+        throw new Error("Invalid user data");
+      }
+
+      // ✅ Restore session ngay lập tức (KHÔNG gọi API)
+      setUser(parsedUser);
+      setToken(storedToken);
+    } catch (error) {
+      console.error("Auth restore failed:", error);
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      localStorage.removeItem("publisher");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   const login = (userData: User, jwt: string) => {
     const cleanToken = jwt.replace(/^Bearer\s+/i, "").trim();
@@ -48,7 +77,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem("user", JSON.stringify(userData));
       localStorage.setItem("token", cleanToken);
-    } catch {}
+    } catch (error) {
+      console.error("Failed to save auth:", error);
+    }
   };
 
   const logout = () => {
@@ -58,12 +89,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.removeItem("user");
       localStorage.removeItem("token");
-      localStorage.removeItem("publisher"); // ✅ THÊM: Xóa publisher cũ nếu có
-    } catch {}
+      localStorage.removeItem("publisher");
+    } catch (error) {
+      console.error("Failed to clear auth:", error);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

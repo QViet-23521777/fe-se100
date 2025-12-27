@@ -1,10 +1,20 @@
 import { gameStoreApiUrl } from "@/lib/game-store-api";
 
 export type SteamApp = {
-  steamAppId: number;
+  id: string;
   name: string;
-  avatarUrl?: string;
-  detailsUrl?: string;
+  genre?: string;
+  description?: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  releaseDate?: string;
+  publisherId?: string;
+  platforms?: string;
+  version?: string;
+  originalPrice?: number;
+  discountPrice?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 type FetchSteamAppsOptions = {
@@ -26,29 +36,26 @@ export async function fetchSteamApps({
   const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
 
   const query = new URLSearchParams();
-  query.set("skip", String(safeSkip));
-  query.set("limit", String(safeLimit));
   if (search?.trim()) query.set("search", search.trim());
 
   try {
-    const res = await fetch(gameStoreApiUrl(`/steam-apps?${query.toString()}`), {
+    const res = await fetch(gameStoreApiUrl(`/games?${query.toString()}`), {
       cache: "no-store",
     });
     if (!res.ok) return [];
     return normalizeSteamApps(await res.json());
-  } catch {
+  } catch (err) {
+    console.error("Failed to fetch games:", err);
     return [];
   }
 }
 
-export async function fetchSteamAppById(
-  steamAppId: number
-): Promise<SteamApp | null> {
-  const safeId = Number.isFinite(steamAppId) ? Math.floor(steamAppId) : 0;
-  if (safeId <= 0) return null;
+export async function fetchSteamAppById(id: string): Promise<SteamApp | null> {
+  if (!id) return null;
 
   try {
-    const res = await fetch(gameStoreApiUrl(`/steam-apps/${safeId}`), {
+    // ĐỔI ENDPOINT
+    const res = await fetch(gameStoreApiUrl(`/games/${id}`), {
       cache: "no-store",
     });
     if (!res.ok) return null;
@@ -60,24 +67,9 @@ export async function fetchSteamAppById(
 
 export async function fetchRandomSteamApps({
   limit = 24,
-  maxSkipGuess = 85000,
 }: {
   limit?: number;
-  maxSkipGuess?: number;
 } = {}): Promise<SteamApp[]> {
-  const safeLimitInput = Number.isFinite(limit) ? Math.floor(limit) : 24;
-  const safeLimit = Math.min(Math.max(safeLimitInput, 1), 100);
-
-  const safeMaxSkipGuessInput = Number.isFinite(maxSkipGuess)
-    ? Math.floor(maxSkipGuess)
-    : 0;
-  const safeMaxSkipGuess = Math.max(safeMaxSkipGuessInput, 0);
-  const maxSkip = Math.max(safeMaxSkipGuess - safeLimit, 0);
-  const skip = maxSkip > 0 ? Math.floor(Math.random() * (maxSkip + 1)) : 0;
-
-  const primary = await fetchSteamApps({ skip, limit: safeLimit });
-  if (primary.length > 0) return primary;
-  if (skip === 0) return primary;
-
-  return fetchSteamApps({ skip: 0, limit: safeLimit });
+  const safeLimit = Math.min(Math.max(limit, 1), 100);
+  return fetchSteamApps({ limit: safeLimit });
 }

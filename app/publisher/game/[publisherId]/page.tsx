@@ -34,6 +34,12 @@ export default function PublisherGamesPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  // ✅ Đánh dấu component đã mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -122,9 +128,15 @@ export default function PublisherGamesPage() {
     }
   };
 
+  // ✅ FIX: Chờ mount xong mới render để tránh hydration error
+  if (!mounted) {
+    return null;
+  }
+
+  // ✅ FIX: Loading state với consistent className
   if (!user || !token) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-white/70">Checking authentication…</div>
       </div>
     );
@@ -208,7 +220,7 @@ export default function PublisherGamesPage() {
           {filteredGames.length === 0 ? (
             <div className="text-center py-20">
               <p className="text-xl text-white/70">
-                No games match “{searchQuery}”.
+                No games match "{searchQuery}".
               </p>
             </div>
           ) : (
@@ -245,7 +257,8 @@ function GameCard({
   const discountPercent =
     hasDiscount && game.originalPrice > 0
       ? Math.round(
-          ((game.originalPrice - game.discountPrice!) / game.originalPrice) * 100
+          ((game.originalPrice - game.discountPrice!) / game.originalPrice) *
+            100
         )
       : 0;
 

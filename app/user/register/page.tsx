@@ -34,6 +34,7 @@ export default function RegisterPage() {
     phoneNumber: "",
     password: "",
     confirmPassword: "",
+    gender: "",
     agree: false,
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -53,8 +54,13 @@ export default function RegisterPage() {
     router.replace(nextPath);
   }, [nextPath, router, user]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const target = e.target as HTMLInputElement;
+    const { name, value, type } = target;
+    const checked = "checked" in target ? target.checked : false;
+
     setForm((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -74,7 +80,10 @@ export default function RegisterPage() {
     }
 
     if (form.password.length < 8) {
-      setMessage({ type: "error", text: "Password must be at least 8 characters." });
+      setMessage({
+        type: "error",
+        text: "Password must be at least 8 characters.",
+      });
       return;
     }
 
@@ -91,6 +100,14 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!form.gender) {
+      setMessage({
+        type: "error",
+        text: "Please select your gender.",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const payload = {
@@ -98,6 +115,7 @@ export default function RegisterPage() {
         username: form.fullName.trim(),
         password: form.password,
         phoneNumber: form.phoneNumber.trim(),
+        genderId: form.gender,
       };
 
       const res = await fetch(gameStoreApiUrl("/auth/customer/register"), {
@@ -106,14 +124,16 @@ export default function RegisterPage() {
         body: JSON.stringify(payload),
       });
 
-      const data = (await res.json().catch(() => null)) as
-        | { message?: string }
-        | null;
+      const data = (await res.json().catch(() => null)) as {
+        message?: string;
+      } | null;
 
       if (!res.ok) {
         setMessage({
           type: "error",
-          text: data?.message || "Sign up failed. Please check your info and try again.",
+          text:
+            data?.message ||
+            "Sign up failed. Please check your info and try again.",
         });
         return;
       }
@@ -121,12 +141,17 @@ export default function RegisterPage() {
       const loginRes = await fetch(gameStoreApiUrl("/auth/customer/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: payload.email, password: payload.password }),
+        body: JSON.stringify({
+          email: payload.email,
+          password: payload.password,
+        }),
       });
 
-      const loginData = (await loginRes.json().catch(() => null)) as
-        | { token?: string; user?: unknown; message?: string }
-        | null;
+      const loginData = (await loginRes.json().catch(() => null)) as {
+        token?: string;
+        user?: unknown;
+        message?: string;
+      } | null;
 
       if (loginRes.ok && loginData?.token && loginData?.user) {
         login(loginData.user as any, loginData.token);
@@ -149,130 +174,146 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen w-full bg-[#070f2b] text-white flex items-center justify-center px-6 py-10">
-      <div className="relative grid w-full max-w-6xl gap-8 lg:grid-cols-[520px_minmax(0,1fr)] items-center">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="absolute left-6 top-6 text-white/80 text-2xl leading-none"
-          aria-label="Back"
-        >
-          ×
-        </button>
+      <div className="relative w-full max-w-6xl">
+        {/* Close button - Fixed position */}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-w-[520px]">
-          <h1 className="text-4xl font-semibold mb-2">Create an account</h1>
-          <p className="text-white/70 mb-2">Sign up to continue to checkout and wishlist.</p>
-
-          <input
-            name="fullName"
-            type="text"
-            placeholder="Full Name"
-            value={form.fullName}
-            onChange={handleChange}
-            minLength={3}
-            required
-            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
-          />
-
-          <input
-            name="email"
-            type="email"
-            placeholder="Email Address"
-            value={form.email}
-            onChange={handleChange}
-            required
-            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
-          />
-
-          <input
-            name="phoneNumber"
-            type="tel"
-            placeholder="Phone Number (0xxxxxxxxx or +84xxxxxxxxx)"
-            value={form.phoneNumber}
-            onChange={handleChange}
-            pattern="^(0|\\+84)[0-9]{9,10}$"
-            required
-            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
-          />
-
-          <input
-            name="password"
-            type="password"
-            placeholder="Password (min 8 characters)"
-            value={form.password}
-            onChange={handleChange}
-            minLength={8}
-            required
-            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
-          />
-
-          <input
-            name="confirmPassword"
-            type="password"
-            placeholder="Confirm Password"
-            value={form.confirmPassword}
-            onChange={handleChange}
-            required
-            className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
-          />
-
-          <label className="flex items-center gap-3 text-sm text-white/85">
-            <input
-              type="checkbox"
-              name="agree"
-              checked={form.agree}
-              onChange={handleChange}
-              className="h-4 w-4 rounded border-white/50 bg-transparent"
-              required
-            />
-            I agree with the{" "}
-            <Link href="/terms" className="underline">
-              Terms
-            </Link>{" "}
-            and{" "}
-            <Link href="/privacy" className="underline">
-              Privacy policy
-            </Link>
-          </label>
-
-          {message ? (
-            <div
-              className={`rounded-[10px] border px-4 py-3 text-sm ${
-                message.type === "success"
-                  ? "border-green-500/40 bg-green-500/10 text-green-200"
-                  : "border-red-500/40 bg-red-500/10 text-red-200"
-              }`}
-            >
-              {message.text}
-            </div>
-          ) : null}
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full rounded-[10px] bg-[#1b1a55] px-4 py-3 text-center text-lg font-semibold text-white shadow disabled:opacity-60"
+        {/* Main content grid */}
+        <div className="grid w-full gap-8 lg:grid-cols-[520px_minmax(0,1fr)] items-center">
+          <form
+            onSubmit={handleSubmit}
+            className="flex flex-col gap-4 max-w-[520px]"
           >
-            {isLoading ? "Creating account..." : "Sign up"}
-          </button>
+            <h1 className="text-4xl font-semibold mb-2">Create an account</h1>
+            <p className="text-white/70 mb-2">
+              Sign up to continue to checkout and wishlist.
+            </p>
 
-          <p className="text-sm text-white/80">
-            Already have an account?{" "}
-            <Link
-              href={`/user/login?next=${encodeURIComponent(nextPath)}`}
-              className="font-semibold underline"
+            <input
+              name="fullName"
+              type="text"
+              placeholder="Full Name"
+              value={form.fullName}
+              onChange={handleChange}
+              minLength={3}
+              required
+              className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+            />
+
+            <input
+              name="email"
+              type="email"
+              placeholder="Email Address"
+              value={form.email}
+              onChange={handleChange}
+              required
+              className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+            />
+
+            <input
+              name="phoneNumber"
+              type="tel"
+              placeholder="Phone Number (0xxxxxxxxx or +84xxxxxxxxx)"
+              value={form.phoneNumber}
+              onChange={handleChange}
+              pattern="^(0|\\+84)[0-9]{9,10}$"
+              required
+              className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+            />
+
+            <select
+              name="gender"
+              value={form.gender}
+              onChange={handleChange}
+              required
+              className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-white/30"
             >
-              Log in
-            </Link>
-          </p>
-        </form>
+              <option value="" disabled>
+                Select Gender
+              </option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
 
-        <div className="hidden overflow-hidden rounded-[25px] shadow-2xl lg:block">
-          <img
-            src={hero}
-            alt="Signup background"
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
+            <input
+              name="password"
+              type="password"
+              placeholder="Password (min 8 characters)"
+              value={form.password}
+              onChange={handleChange}
+              minLength={8}
+              required
+              className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+            />
+
+            <input
+              name="confirmPassword"
+              type="password"
+              placeholder="Confirm Password"
+              value={form.confirmPassword}
+              onChange={handleChange}
+              required
+              className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+            />
+
+            <label className="flex items-center gap-3 text-sm text-white/85">
+              <input
+                type="checkbox"
+                name="agree"
+                checked={form.agree}
+                onChange={handleChange}
+                className="h-4 w-4 rounded border-white/50 bg-transparent"
+                required
+              />
+              I agree with the{" "}
+              <Link href="/terms" className="underline">
+                Terms
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="underline">
+                Privacy policy
+              </Link>
+            </label>
+
+            {message ? (
+              <div
+                className={`rounded-[10px] border px-4 py-3 text-sm ${
+                  message.type === "success"
+                    ? "border-green-500/40 bg-green-500/10 text-green-200"
+                    : "border-red-500/40 bg-red-500/10 text-red-200"
+                }`}
+              >
+                {message.text}
+              </div>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full rounded-[10px] bg-[#1b1a55] px-4 py-3 text-center text-lg font-semibold text-white shadow disabled:opacity-60 hover:bg-[#1b1a55]/90 transition-colors"
+            >
+              {isLoading ? "Creating account..." : "Sign up"}
+            </button>
+
+            <p className="text-sm text-white/80">
+              Already have an account?{" "}
+              <Link
+                href={`/user/login?next=${encodeURIComponent(nextPath)}`}
+                className="font-semibold underline"
+              >
+                Log in
+              </Link>
+            </p>
+          </form>
+
+          <div className="hidden overflow-hidden rounded-[25px] shadow-2xl lg:block">
+            <img
+              src={hero}
+              alt="Signup background"
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          </div>
         </div>
       </div>
     </div>
