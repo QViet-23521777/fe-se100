@@ -7,6 +7,11 @@ import {
 } from "@/components/StoreActions";
 import CarouselRow, { type CarouselItem } from "@/components/landing/CarouselRow";
 import { fetchRandomSteamApps, type SteamApp } from "@/lib/steam-apps";
+import {
+  centsToUsd,
+  fetchSteamAppDetailsBatch,
+  type SteamAppStoreDetails,
+} from "@/lib/steam-store";
 
 type GameItem = {
   steamAppId?: number;
@@ -97,6 +102,113 @@ function pseudoDiscountPercent(steamAppId: number) {
   return DISCOUNT_POINTS[idx];
 }
 
+type ScoredSteamApp = {
+  app: SteamApp;
+  details: SteamAppStoreDetails | null;
+  comingSoon: boolean;
+  discountPercent: number;
+  recommendations: number;
+  price: number;
+  originalPrice?: number;
+  imageSrc: string;
+};
+
+function priceFromSteam(details: SteamAppStoreDetails | null, steamAppId: number) {
+  if (details?.is_free) return { price: 0 as number, originalPrice: undefined, discount: 0 };
+  const discount = details?.price_overview?.discount_percent ?? 0;
+  const finalUsd = centsToUsd(details?.price_overview?.final);
+  const initialUsd = centsToUsd(details?.price_overview?.initial);
+
+  const fallback = pseudoOriginalPrice(steamAppId);
+  const price = typeof finalUsd === "number" ? finalUsd : fallback;
+  const originalPrice =
+    discount > 0 && typeof initialUsd === "number" ? initialUsd : undefined;
+
+  return { price, originalPrice, discount };
+}
+
+function scoreSteamApp(app: SteamApp, details: SteamAppStoreDetails | null): ScoredSteamApp {
+  const comingSoon = Boolean(details?.release_date?.coming_soon);
+  const recommendations = details?.recommendations?.total ?? 0;
+  const { price, originalPrice, discount } = priceFromSteam(details, app.steamAppId);
+  const imageSrc = details?.header_image ?? steamHeaderUrl(app);
+
+  return {
+    app,
+    details,
+    comingSoon,
+    discountPercent: discount ?? 0,
+    recommendations: Number.isFinite(recommendations) ? recommendations : 0,
+    price,
+    originalPrice,
+    imageSrc,
+  };
+}
+
+function toCarouselItemFromScore(
+  scored: ScoredSteamApp,
+  kind: "default" | "deal" = "default"
+): CarouselItem {
+  if (kind === "deal") {
+    const original =
+      typeof scored.originalPrice === "number"
+        ? scored.originalPrice
+        : pseudoOriginalPrice(scored.app.steamAppId);
+    const price =
+      typeof scored.price === "number"
+        ? scored.price
+        : Math.max(0, Math.round(original * (100 - scored.discountPercent)) / 100);
+
+    return {
+      id: String(scored.app.steamAppId),
+      title: scored.app.name,
+      price,
+      originalPrice: original,
+      discountPercent: scored.discountPercent || undefined,
+      imageSrc: scored.imageSrc,
+    };
+  }
+
+  return {
+    id: String(scored.app.steamAppId),
+    title: scored.app.name,
+    price: Number.isFinite(scored.price) ? scored.price : pseudoOriginalPrice(scored.app.steamAppId),
+    imageSrc: scored.imageSrc,
+  };
+}
+
+function toGameItemFromScore(
+  scored: ScoredSteamApp,
+  options: { cta: string; kind?: "default" | "deal" }
+): GameItem {
+  const safePrice = Number.isFinite(scored.price) ? scored.price : pseudoOriginalPrice(scored.app.steamAppId);
+  const priceLabel = scored.details?.is_free ? "Free" : formatUsd(safePrice);
+
+  if (options.kind === "deal") {
+    const originalPrice =
+      typeof scored.originalPrice === "number"
+        ? scored.originalPrice
+        : pseudoOriginalPrice(scored.app.steamAppId);
+    return {
+      steamAppId: scored.app.steamAppId,
+      title: scored.app.name,
+      price: scored.details?.is_free ? "Free" : formatUsd(safePrice),
+      originalPrice: formatUsd(originalPrice),
+      image: scored.imageSrc,
+      tag: scored.discountPercent ? `-${scored.discountPercent}%` : undefined,
+      cta: options.cta,
+    };
+  }
+
+  return {
+    steamAppId: scored.app.steamAppId,
+    title: scored.app.name,
+    price: priceLabel,
+    image: scored.imageSrc,
+    cta: options.cta,
+  };
+}
+
 function toCarouselItem(app: SteamApp, kind: "default" | "deal" = "default"): CarouselItem {
   const original = pseudoOriginalPrice(app.steamAppId);
   const imageSrc = steamHeaderUrl(app);
@@ -174,6 +286,48 @@ const upcomingGames: GameItem[] = [
     cta: "Pre-Order",
     image: "/assets/card-36-621.jpg",
   },
+  {
+    title: "Starfall Odyssey",
+    price: "$59.99",
+    cta: "Pre-Order",
+    image: "/assets/1d6d5ae07fe3da8267a6f757f03f02f18eff9f08.png",
+  },
+  {
+    title: "Neon Noir",
+    price: "$39.99",
+    cta: "Pre-Order",
+    image: "/assets/29b13c258d993ae606182d40bff29a511967883f.png",
+  },
+  {
+    title: "Chrono Drift",
+    price: "$44.99",
+    cta: "Pre-Order",
+    image: "/assets/05d783cce6ca28a9bb202198b4b629201043fd0e.png",
+  },
+  {
+    title: "Eclipse Protocol",
+    price: "$69.99",
+    cta: "Pre-Order",
+    image: "/assets/35b7aefe0e6e92e5046081670ba380dbb7245523.png",
+  },
+  {
+    title: "Skyforge Legends",
+    price: "$54.99",
+    cta: "Pre-Order",
+    image: "/assets/d7d9eaf2c6b2facbb5fe1540f90aba3c88e999f1.png",
+  },
+  {
+    title: "Aurora Nexus",
+    price: "$64.99",
+    cta: "Pre-Order",
+    image: "/assets/ade3f8374a32d9c832eed8e7c34accadfdc86d87.png",
+  },
+  {
+    title: "Frostbound",
+    price: "$59.99",
+    cta: "Pre-Order",
+    image: "/assets/148312359c41c9460a4ef41fa8a0975521da92d6.png",
+  },
 ];
 
 const trendingGames: GameItem[] = [
@@ -194,6 +348,48 @@ const trendingGames: GameItem[] = [
     price: "$59.99",
     cta: "Buy Now",
     image: "/assets/card-33-395.jpg",
+  },
+  {
+    title: "Cyber Rally",
+    price: "$39.99",
+    cta: "Buy Now",
+    image: "/assets/0b3cd3253b9830d749ccd0e52ee184758293bf9e.png",
+  },
+  {
+    title: "Shadow Circuit",
+    price: "$34.99",
+    cta: "Buy Now",
+    image: "/assets/82dbcac61b11c77ced4b7b8e01436a85748c7432.png",
+  },
+  {
+    title: "Ion Runner",
+    price: "$29.99",
+    cta: "Buy Now",
+    image: "/assets/690ad191d6f4c314ae31ce32eb8020e35e625bf9.png",
+  },
+  {
+    title: "Deep Blue",
+    price: "$27.99",
+    cta: "Buy Now",
+    image: "/assets/89f0123396619d52c0a3ac71a6a615bdf29a3566.png",
+  },
+  {
+    title: "Arcstorm",
+    price: "$44.99",
+    cta: "Buy Now",
+    image: "/assets/0b3cd3253b9830d749ccd0e52ee184758293bf9e.png",
+  },
+  {
+    title: "Quantum Rush",
+    price: "$49.99",
+    cta: "Buy Now",
+    image: "/assets/80065c60e22be67fb21c2eebde9f5cc25af94d35.png",
+  },
+  {
+    title: "Midnight Drift",
+    price: "$32.99",
+    cta: "Buy Now",
+    image: "/assets/e4a67992efe823b6dab661c4eb0ca346aaf63b8c.png",
   },
 ];
 
@@ -234,6 +430,30 @@ const bestsellers: GameItem[] = [
     image: "/assets/card-35-514.jpg",
     cta: "Buy Now",
   },
+  {
+    title: "Skylines Reborn",
+    price: "$24.99",
+    image: "/assets/ab5db46fa48ae418fb1e714c94f7d5a69398dd91.png",
+    cta: "Buy Now",
+  },
+  {
+    title: "Galactic Frontiers",
+    price: "$34.99",
+    image: "/assets/41257b534936f9a3c9376f415acb8f44d64be4bd.png",
+    cta: "Buy Now",
+  },
+  {
+    title: "Forgotten Sands",
+    price: "$21.99",
+    image: "/assets/062524061a9c69da33a8e8844b2cde4436dfd21d.png",
+    cta: "Buy Now",
+  },
+  {
+    title: "Vortex Siege",
+    price: "$27.99",
+    image: "/assets/49b272b182ca363870ee17abeb3516cd9b20eb52.png",
+    cta: "Buy Now",
+  },
 ];
 
 const bestDeals: GameItem[] = [
@@ -254,6 +474,55 @@ const bestDeals: GameItem[] = [
     price: "$17.99",
     cta: "Buy Now",
     image: "/assets/card-35-514.jpg",
+  },
+  {
+    title: "Project Velocity",
+    price: "$12.99",
+    originalPrice: "$29.99",
+    cta: "Buy Now",
+    image: "/assets/29b13c258d993ae606182d40bff29a511967883f.png",
+  },
+  {
+    title: "Echoes of Ruin",
+    price: "$14.99",
+    originalPrice: "$39.99",
+    cta: "Buy Now",
+    image: "/assets/34482bc3b3126f3d89642bb412ebf3523dc1d818.png",
+  },
+  {
+    title: "Drift Horizon",
+    price: "$11.99",
+    originalPrice: "$24.99",
+    cta: "Buy Now",
+    image: "/assets/0b3cd3253b9830d749ccd0e52ee184758293bf9e.png",
+  },
+  {
+    title: "Neptune Rising",
+    price: "$16.99",
+    originalPrice: "$32.99",
+    cta: "Buy Now",
+    image: "/assets/5dd5e36eb794e5678d435be8ccc66f4671f33013.png",
+  },
+  {
+    title: "Shadow Bazaar",
+    price: "$9.99",
+    originalPrice: "$24.99",
+    cta: "Buy Now",
+    image: "/assets/5f23030da66ae6c0112350ce2246875ea4cf2bdc.png",
+  },
+  {
+    title: "Crimson Dunes",
+    price: "$13.99",
+    originalPrice: "$29.99",
+    cta: "Buy Now",
+    image: "/assets/5abc0e55a1382777afdb381f51650108b607c589.png",
+  },
+  {
+    title: "Solaris Drift",
+    price: "$15.99",
+    originalPrice: "$34.99",
+    cta: "Buy Now",
+    image: "/assets/16564898fd2e0eb4ee58041d24799f097ca09444.png",
   },
 ];
 
@@ -416,9 +685,29 @@ function PromoCard({ promo }: { promo: Promo }) {
   );
 }
 
+function categoryBrowseHref(title: string) {
+  const normalized = title.trim().toLowerCase();
+  if (!normalized) return "/browse";
+  if (normalized === "single-player" || normalized === "single player") {
+    return "/browse?category=single-player";
+  }
+  if (normalized === "vr") {
+    return "/browse?category=vr";
+  }
+  if (normalized === "fps") {
+    return "/browse?category=fps";
+  }
+  return `/browse?genre=${encodeURIComponent(title)}`;
+}
+
 function CategoryCard({ item }: { item: CategoryItem }) {
+  const href = categoryBrowseHref(item.title);
   return (
-    <div className="relative h-[200px] overflow-hidden rounded-[18px] bg-[#0c1430] shadow-lg">
+    <Link
+      href={href}
+      className="group relative block h-[200px] overflow-hidden rounded-[18px] bg-[#0c1430] shadow-lg"
+      aria-label={`Browse ${item.title}`}
+    >
       <img
         src={item.image}
         alt={item.title}
@@ -437,7 +726,8 @@ function CategoryCard({ item }: { item: CategoryItem }) {
       <p className="absolute left-4 bottom-4 text-lg font-semibold text-white drop-shadow">
         {item.title}
       </p>
-    </div>
+      <span className="absolute inset-0 rounded-[18px] ring-1 ring-white/0 transition group-hover:ring-white/15" />
+    </Link>
   );
 }
 
@@ -532,31 +822,103 @@ export default async function Home() {
   const maxSkipGuess = Number.isFinite(maxSkipGuessRaw) ? maxSkipGuessRaw : 85000;
   const perRow = 10;
   const desiredTotal = 1 + perRow * 4;
-  const steamApps = await fetchRandomSteamApps({
-    limit: Math.min(desiredTotal * 2, 100),
-    maxSkipGuess,
-  });
-  const uniqueSteamApps = steamApps.filter((app, idx, arr) => {
-    const firstIdx = arr.findIndex((other) => other.steamAppId === app.steamAppId);
+
+  const apiAppPool: SteamApp[] = [];
+  const seenApiIds = new Set<number>();
+  const scoredPool: ScoredSteamApp[] = [];
+
+  const maxAttempts = 6;
+  const batchSize = 18;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const apps = await fetchRandomSteamApps({ limit: batchSize, maxSkipGuess });
+    const fresh = apps.filter((app) => {
+      if (seenApiIds.has(app.steamAppId)) return false;
+      seenApiIds.add(app.steamAppId);
+      return true;
+    });
+    apiAppPool.push(...fresh);
+
+    if (fresh.length === 0) continue;
+
+    const detailsMap = await fetchSteamAppDetailsBatch(
+      fresh.map((app) => app.steamAppId),
+      { revalidateSeconds: 60 * 10, concurrency: 6 }
+    );
+
+    for (const app of fresh) {
+      scoredPool.push(scoreSteamApp(app, detailsMap.get(app.steamAppId) ?? null));
+    }
+
+    const dealsCount = scoredPool.filter(
+      (item) => !item.comingSoon && item.discountPercent > 0 && item.originalPrice
+    ).length;
+    const upcomingCount = scoredPool.filter((item) => item.comingSoon).length;
+    const popularCount = scoredPool.filter(
+      (item) => !item.comingSoon && item.discountPercent === 0
+    ).length;
+
+    if (
+      dealsCount >= perRow &&
+      (upcomingCount >= Math.min(perRow, 4) || attempt >= 2) &&
+      popularCount >= perRow * 2
+    ) {
+      break;
+    }
+  }
+
+  const scoredUnique = scoredPool.filter((item, idx, arr) => {
+    const firstIdx = arr.findIndex((other) => other.app.steamAppId === item.app.steamAppId);
     return firstIdx === idx;
   });
-  const shuffledSteamApps = shuffle(uniqueSteamApps);
 
-  const featuredSteamApp = shuffledSteamApps[0];
-  const featuredItem = featuredSteamApp
-    ? toSteamGameItem(featuredSteamApp, { cta: "Buy Now" })
+  const usedIds = new Set<number>();
+
+  const dealsPool = scoredUnique
+    .filter((item) => !item.comingSoon && item.discountPercent > 0 && item.originalPrice)
+    .sort((a, b) => {
+      if (b.discountPercent !== a.discountPercent) return b.discountPercent - a.discountPercent;
+      return b.recommendations - a.recommendations;
+    });
+
+  const upcomingPool = scoredUnique
+    .filter((item) => item.comingSoon)
+    .sort((a, b) => b.recommendations - a.recommendations);
+
+  const popularPool = scoredUnique
+    .filter((item) => !item.comingSoon && item.discountPercent === 0)
+    .sort((a, b) => b.recommendations - a.recommendations);
+
+  function takeUnique(list: ScoredSteamApp[], count: number) {
+    const picked: ScoredSteamApp[] = [];
+    for (const item of list) {
+      if (picked.length >= count) break;
+      if (usedIds.has(item.app.steamAppId)) continue;
+      usedIds.add(item.app.steamAppId);
+      picked.push(item);
+    }
+    return picked;
+  }
+
+  const bestDealPicked = takeUnique(dealsPool, perRow);
+  const bestsellerPicked = takeUnique(popularPool, perRow);
+  const trendingPicked = takeUnique(popularPool.slice(perRow), perRow);
+  const upcomingPicked = takeUnique(upcomingPool, perRow);
+
+  const featuredScored =
+    shuffle([...bestsellerPicked, ...trendingPicked, ...bestDealPicked])[0] ??
+    shuffle(scoredUnique.filter((item) => !item.comingSoon))[0] ??
+    shuffle(scoredUnique)[0] ??
+    null;
+
+  const featuredItem = featuredScored
+    ? toGameItemFromScore(featuredScored, { cta: "Buy Now" })
     : {
         title: "The Last of Us Part II",
         price: "$49.99",
         image: assets.hero,
         cta: "Buy Now",
       };
-
-  const pool = shuffledSteamApps.slice(1);
-  const upcomingApps = pool.slice(0, perRow);
-  const trendingApps = pool.slice(perRow, perRow * 2);
-  const bestsellerApps = pool.slice(perRow * 2, perRow * 3);
-  const bestDealApps = pool.slice(perRow * 3, perRow * 4);
 
   const fallbackUpcoming = upcomingGames.map((game) => ({
     id: game.steamAppId ? String(game.steamAppId) : game.title,
@@ -602,19 +964,34 @@ export default async function Home() {
     return out;
   }
 
-  const upcomingItems = upcomingApps.length
-    ? upcomingApps.map((app) => toCarouselItem(app))
-    : repeatToLength(fallbackUpcoming, perRow);
-  const trendingItems = trendingApps.length
-    ? trendingApps.map((app) => toCarouselItem(app))
-    : repeatToLength(fallbackTrending, perRow);
-  const bestsellerItems = bestsellerApps.length
-    ? bestsellerApps.map((app) => toCarouselItem(app))
-    : repeatToLength(fallbackBestsellers, perRow);
-  const bestDealItems = bestDealApps.length
-    ? bestDealApps.map((app) => toCarouselItem(app, "deal"))
-    : repeatToLength(fallbackDeals, perRow);
-  const showApiHint = steamApps.length === 0;
+  function fillToLength<T extends { id: string }>(primary: T[], fallback: T[], target: number) {
+    if (primary.length >= target) return primary.slice(0, target);
+    const missing = target - primary.length;
+    return [...primary, ...repeatToLength(fallback, missing)];
+  }
+
+  const upcomingItems = fillToLength(
+    upcomingPicked.map((item) => toCarouselItemFromScore(item)),
+    fallbackUpcoming,
+    perRow
+  );
+  const trendingItems = fillToLength(
+    trendingPicked.map((item) => toCarouselItemFromScore(item)),
+    fallbackTrending,
+    perRow
+  );
+  const bestsellerItems = fillToLength(
+    bestsellerPicked.map((item) => toCarouselItemFromScore(item)),
+    fallbackBestsellers,
+    perRow
+  );
+  const bestDealItems = fillToLength(
+    bestDealPicked.map((item) => toCarouselItemFromScore(item, "deal")),
+    fallbackDeals,
+    perRow
+  );
+
+  const showApiHint = apiAppPool.length === 0;
   return (
     <div className="w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
       <div className="flex w-full flex-col gap-12 px-5 pb-16 pt-4 sm:px-8 lg:px-10">

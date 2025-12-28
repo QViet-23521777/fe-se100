@@ -3,6 +3,13 @@ import Link from "next/link";
 import { TopBar } from "@/components/TopBar";
 import { AddToCartPillButton, WishlistIconButton } from "@/components/StoreActions";
 import { fetchSteamApps, type SteamApp } from "@/lib/steam-apps";
+import {
+  centsToUsd,
+  fetchSteamAppDetailsBatch,
+  hasCategory,
+  hasGenre,
+  type SteamAppStoreDetails,
+} from "@/lib/steam-store";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +108,61 @@ function readParam(params: SearchParams, key: string) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function hashToUnit(value: string) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash / 0xffffffff;
+}
+
+function toPriceLabel(details: SteamAppStoreDetails | null, fallbackUsd: number) {
+  if (details?.is_free) return { price: "Free", originalPrice: undefined, discount: undefined };
+
+  const discountPercent = details?.price_overview?.discount_percent ?? 0;
+  const finalFormatted = details?.price_overview?.final_formatted;
+  const initialFormatted = details?.price_overview?.initial_formatted;
+
+  const finalUsd = centsToUsd(details?.price_overview?.final);
+  const initialUsd = centsToUsd(details?.price_overview?.initial);
+
+  const price = finalFormatted || (typeof finalUsd === "number" ? formatUsd(finalUsd) : formatUsd(fallbackUsd));
+  const originalPrice =
+    discountPercent > 0
+      ? initialFormatted || (typeof initialUsd === "number" ? formatUsd(initialUsd) : undefined)
+      : undefined;
+
+  return {
+    price,
+    originalPrice,
+    discount: discountPercent > 0 ? `-${discountPercent}%` : undefined,
+  };
+}
+
+function matchesCategoryFilter(details: SteamAppStoreDetails | null, category: string) {
+  const normalized = category.trim().toLowerCase();
+  if (!normalized) return true;
+
+  if (normalized === "single-player" || normalized === "single player") {
+    return hasCategory(details ?? undefined, "single-player");
+  }
+
+  if (normalized === "vr") {
+    return hasCategory(details ?? undefined, "vr");
+  }
+
+  if (normalized === "fps") {
+    return (
+      hasGenre(details ?? undefined, "action") &&
+      (hasCategory(details ?? undefined, "pvp") ||
+        hasCategory(details ?? undefined, "multi-player") ||
+        hasCategory(details ?? undefined, "online pvp"))
+    );
+  }
+
+  return hasCategory(details ?? undefined, normalized);
+}
+
 export default async function BrowsePage({
   searchParams,
 }: {
@@ -108,32 +170,96 @@ export default async function BrowsePage({
 }) {
   const resolvedParams = await Promise.resolve(searchParams ?? {});
   const q = (readParam(resolvedParams, "q") ?? "").trim();
+  const genre = (readParam(resolvedParams, "genre") ?? "").trim();
+  const category = (readParam(resolvedParams, "category") ?? "").trim();
   const pageRaw = readParam(resolvedParams, "page") ?? "1";
   const pageNumberRaw = Number(pageRaw);
   const page = Number.isFinite(pageNumberRaw) ? Math.max(1, Math.floor(pageNumberRaw)) : 1;
 
+  const maxSkipGuessRaw = Number(
+    process.env.STEAM_APPS_MAX_SKIP ?? process.env.NEXT_PUBLIC_STEAM_APPS_MAX_SKIP ?? "85000"
+  );
+  const maxSkipGuess = Number.isFinite(maxSkipGuessRaw) ? maxSkipGuessRaw : 85000;
+
   const limit = 24;
-  const skip = (page - 1) * limit;
+  const hasFilter = Boolean(genre || category);
 
-  const steamApps = await fetchSteamApps({
-    search: q ? q : undefined,
-    skip,
-    limit,
-  });
+  let apiHadResults = false;
+  let cards: BrowseCard[] = [];
 
-  const cards: BrowseCard[] = steamApps.map((app) => ({
-    steamAppId: app.steamAppId,
-    title: app.name,
-    price: formatUsd(pseudoOriginalPrice(app.steamAppId)),
-    image: steamHeaderUrl(app),
-  }));
+  if (!hasFilter) {
+    const skip = (page - 1) * limit;
+    const steamApps = await fetchSteamApps({
+      search: q ? q : undefined,
+      skip,
+      limit,
+    });
 
-  const showApiHint = cards.length === 0 && !q;
+    apiHadResults = steamApps.length > 0;
+    cards = steamApps.map((app) => ({
+      steamAppId: app.steamAppId,
+      title: app.name,
+      price: formatUsd(pseudoOriginalPrice(app.steamAppId)),
+      image: steamHeaderUrl(app),
+    }));
+  } else {
+    const seedBase = `q=${q}|genre=${genre}|category=${category}|page=${page}`;
+    const batchSize = 16;
+    const maxSkip = Math.max(maxSkipGuess - batchSize, 0);
+    const attempts = 8;
+
+    const seenIds = new Set<number>();
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (cards.length >= limit) break;
+
+      const skip = maxSkip > 0 ? Math.floor(hashToUnit(`${seedBase}|${attempt}`) * (maxSkip + 1)) : 0;
+      const steamApps = await fetchSteamApps({
+        search: q ? q : undefined,
+        skip,
+        limit: batchSize,
+      });
+
+      if (steamApps.length > 0) apiHadResults = true;
+      if (steamApps.length === 0) continue;
+
+      const detailsMap = await fetchSteamAppDetailsBatch(
+        steamApps.map((app) => app.steamAppId),
+        { revalidateSeconds: 60 * 10, concurrency: 6 }
+      );
+
+      for (const app of steamApps) {
+        if (cards.length >= limit) break;
+        if (seenIds.has(app.steamAppId)) continue;
+        seenIds.add(app.steamAppId);
+
+        const details = detailsMap.get(app.steamAppId) ?? null;
+        if (genre && !hasGenre(details ?? undefined, genre)) continue;
+        if (category && !matchesCategoryFilter(details, category)) continue;
+
+        const fallback = pseudoOriginalPrice(app.steamAppId);
+        const pricing = toPriceLabel(details, fallback);
+
+        cards.push({
+          steamAppId: app.steamAppId,
+          title: details?.name?.trim() || app.name,
+          price: pricing.price,
+          originalPrice: pricing.originalPrice,
+          discount: pricing.discount,
+          image: details?.header_image ?? steamHeaderUrl(app),
+        });
+      }
+    }
+  }
+
+  const showApiHint = !apiHadResults && cards.length === 0 && !q;
   const hasNext = cards.length === limit;
 
   const prevHref = (() => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
+    if (genre) params.set("genre", genre);
+    if (category) params.set("category", category);
     params.set("page", String(Math.max(1, page - 1)));
     return `/browse?${params.toString()}`;
   })();
@@ -141,9 +267,18 @@ export default async function BrowsePage({
   const nextHref = (() => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
+    if (genre) params.set("genre", genre);
+    if (category) params.set("category", category);
     params.set("page", String(page + 1));
     return `/browse?${params.toString()}`;
   })();
+
+  const resetHref = "/browse";
+  const filterLabel = genre
+    ? `Genre: ${genre}`
+    : category
+      ? `Category: ${category}`
+      : null;
 
   return (
     <div className="w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
@@ -163,6 +298,8 @@ export default async function BrowsePage({
               placeholder="Search games..."
               className="h-12 w-full rounded-xl bg-[#1b1a55] px-4 text-white placeholder:text-white/60 outline-none focus:ring-2 focus:ring-white/30 sm:max-w-xl"
             />
+            {genre ? <input type="hidden" name="genre" value={genre} /> : null}
+            {category ? <input type="hidden" name="category" value={category} /> : null}
             <button
               type="submit"
               className="h-12 rounded-xl bg-white px-5 text-sm font-semibold text-[#1b1a55]"
@@ -176,7 +313,15 @@ export default async function BrowsePage({
               {page})
             </p>
           ) : (
-            <p className="text-sm text-white/70">Page {page}</p>
+            <p className="text-sm text-white/70">
+              {filterLabel ? (
+                <>
+                  <span className="font-semibold text-white">{filterLabel}</span> (page {page})
+                </>
+              ) : (
+                <>Page {page}</>
+              )}
+            </p>
           )}
         </section>
 
@@ -251,10 +396,16 @@ export default async function BrowsePage({
           <aside className="w-full max-w-xs space-y-6 rounded-2xl bg-[#0c143d] p-5 shadow-xl lg:sticky lg:top-6">
             <div className="flex items-center justify-between">
               <h3 className="text-2xl font-semibold">Filters</h3>
-              <button className="text-sm text-cyan-300" type="button">
+              <Link href={resetHref} className="text-sm text-cyan-300">
                 Reset
-              </button>
+              </Link>
             </div>
+
+            {filterLabel ? (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
+                Active: <span className="font-semibold text-white">{filterLabel}</span>
+              </div>
+            ) : null}
             <div className="rounded-xl bg-[#1b1a55] px-4 py-3 text-sm text-white/80">
               Keywords
             </div>
@@ -275,4 +426,3 @@ export default async function BrowsePage({
     </div>
   );
 }
-

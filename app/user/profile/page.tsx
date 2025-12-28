@@ -156,14 +156,16 @@ export default function ProfilePage() {
   }, [mounted, router, token]);
 
   const gamerNumber = useMemo(() => {
+    if (!mounted) return hashToSixDigits("gamer");
     const input = profile?.id ?? user?.id ?? profile?.email ?? user?.email ?? "gamer";
     return hashToSixDigits(String(input));
-  }, [profile?.email, profile?.id, user?.email, user?.id]);
+  }, [mounted, profile?.email, profile?.id, user?.email, user?.id]);
 
   const namePlaceholder = useMemo(() => {
+    if (!mounted) return `Gamer-#${gamerNumber}`;
     const base = (form.username || user?.name || "Gamer").trim() || "Gamer";
     return `${base}-#${gamerNumber}`;
-  }, [form.username, gamerNumber, user?.name]);
+  }, [mounted, form.username, gamerNumber, user?.name]);
 
   async function onSave() {
     if (!token) return;
