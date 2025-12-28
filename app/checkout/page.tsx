@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { gameStoreApiUrl } from "@/lib/game-store-api";
+import Link from "next/link";
 
 const gallery = [
   "/assets/41257b534936f9a3c9376f415acb8f44d64be4bd.png",
@@ -19,6 +19,8 @@ const socials = [
   "/assets/figma-social-28-2110.svg",
   "/assets/figma-social-28-2111.svg",
 ];
+
+const API_BASE = "https://your-api-domain.com"; // Replace with your API
 
 export default function CheckoutPage() {
   const [cart, setCart] = useState([
@@ -45,36 +47,57 @@ export default function CheckoutPage() {
     setSuccess(false);
 
     try {
-      // Bước 1: Xác thực tài khoản
-      const res = await fetch(gameStoreApiUrl("/auth/customer/login"), {
+      // Step 1: Login
+      const loginRes = await fetch(`${API_BASE}/auth/customer/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), password }),
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
+      if (!loginRes.ok) {
+        const data = await loginRes.json().catch(() => null);
         throw new Error(data?.message || "Email hoặc mật khẩu không đúng");
       }
 
-      const data = await res.json();
+      const loginData = await loginRes.json();
 
-      // ✅ Kiểm tra response structure
-      if (!data?.token || !data?.user) {
+      if (!loginData?.token || !loginData?.user) {
         throw new Error("Invalid response from server");
       }
 
-      // ✅ Lấy accountBalance từ response
-      const balance = data.user.accountBalance ?? 0;
+      let balance = loginData.user.accountBalance;
+
+      // ✅ Step 2: If accountBalance is missing, fetch from /customers/me
+      if (balance === undefined || balance === null) {
+        console.log(
+          "⚠️ accountBalance not in login response, fetching from /customers/me"
+        );
+
+        const profileRes = await fetch(`${API_BASE}/customers/me`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${loginData.token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          balance = profileData.accountBalance ?? 0;
+        } else {
+          throw new Error("Could not fetch account balance");
+        }
+      }
+
       setAccountBalance(balance);
 
       console.log("✅ Login successful:", {
-        email: data.user.email,
+        email: loginData.user.email,
         balance: balance,
         subtotal: subtotal,
       });
 
-      // Bước 2: Kiểm tra số dư
+      // Step 3: Check balance
       if (balance < subtotal) {
         setError(
           `Số dư không đủ! Bạn có $${balance.toFixed(
@@ -84,7 +107,7 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Bước 3: Thanh toán thành công
+      // Step 4: Process payment
       setSuccess(true);
       setCart([]);
 
@@ -110,17 +133,19 @@ export default function CheckoutPage() {
     <div className="min-h-screen w-full bg-[#070f2b] text-white p-6">
       <div className="flex w-full flex-col gap-10 max-w-7xl mx-auto">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <a
+            href="/"
+            className="flex items-center gap-3 hover:opacity-80 transition"
+          >
             <img src={logo} alt="GameVerse" className="h-10 w-10" />
             <span className="text-xl font-semibold">GameVerse</span>
-          </div>
+          </a>
         </div>
 
         <h1 className="text-4xl font-bold">Checkout</h1>
 
         <div className="grid gap-8 lg:grid-cols-[1.5fr_0.75fr]">
           <div className="space-y-6">
-            {/* Account Authentication Section */}
             <div className="space-y-6 rounded-[20px] bg-gradient-to-b from-white/10 to-black/15 p-6 backdrop-blur">
               <h2 className="text-2xl font-semibold">Xác thực tài khoản</h2>
               <p className="text-sm text-white/70">
@@ -204,7 +229,6 @@ export default function CheckoutPage() {
                   </button>
                 </div>
 
-                {/* ✅ Display Account Balance if logged in */}
                 {accountBalance !== null && (
                   <div className="rounded-[10px] border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm">
                     <div className="flex items-center justify-between">

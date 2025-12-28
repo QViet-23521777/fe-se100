@@ -1,20 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 import { TopBar } from "@/components/TopBar";
 import { useAuth } from "@/app/context/AuthContext";
-import { gameStoreApiUrl, GAME_STORE_API_BASE_URL } from "@/lib/game-store-api";
-
-const logo = "/assets/figma-logo.svg";
-const socials = [
-  "/assets/figma-social-28-2108.svg",
-  "/assets/figma-social-28-2109.svg",
-  "/assets/figma-social-28-2110.svg",
-  "/assets/figma-social-28-2111.svg",
-];
+import { gameStoreApiUrl } from "@/lib/game-store-api";
 
 type CustomerProfile = {
   _id?: string;
@@ -23,14 +15,10 @@ type CustomerProfile = {
   username?: string;
   phoneNumber?: string;
   genderId?: string;
-  registrationDate?: string;
-  accountStatus?: string;
   accountBalance?: number;
   loyaltyPoints?: number;
   bankName?: string;
   description?: string;
-  createdAt?: string;
-  updatedAt?: string;
 };
 
 type Message = { type: "success" | "error"; text: string };
@@ -40,41 +28,7 @@ function hashToSixDigits(input: string) {
   for (let i = 0; i < input.length; i += 1) {
     hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
   }
-  const value = hash % 1_000_000;
-  return String(value).padStart(6, "0");
-}
-
-function AccountSidebarItem({
-  title,
-  subtitle,
-  href,
-  active,
-}: {
-  title: string;
-  subtitle: string;
-  href: string;
-  active?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`relative block px-6 py-5 transition ${
-        active ? "bg-white/10" : "hover:bg-white/5"
-      }`}
-    >
-      {active ? (
-        <span className="absolute left-0 top-0 h-full w-2 bg-white/20" />
-      ) : null}
-      <p
-        className={`text-lg font-semibold ${
-          active ? "text-white/60" : "text-white"
-        }`}
-      >
-        {title}
-      </p>
-      <p className="mt-1 text-sm text-white/55">{subtitle}</p>
-    </Link>
-  );
+  return String(hash % 1_000_000).padStart(6, "0");
 }
 
 function Input({
@@ -112,143 +66,135 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
 
   const [form, setForm] = useState({
-    username: user?.name ?? "",
-    email: user?.email ?? "",
+    username: "",
+    email: "",
     phoneNumber: "",
     genderId: "",
     bankName: "",
     description: "",
   });
 
-  const hasFetchedProfile = useRef(false);
-  const hasCheckedAuth = useRef(false);
-
-  // Effect 1: Redirect if not logged in
-  useEffect(() => {
-    if (hasCheckedAuth.current || authLoading) return;
-
-    if (!token || !user) {
-      hasCheckedAuth.current = true;
-      router.replace(`/user/login?next=${encodeURIComponent("/user/profile")}`);
+  // ✅ FIX: Fetch profile - chỉ phụ thuộc vào auth state
+  const fetchProfile = useCallback(async () => {
+    if (!token) {
+      console.log("❌ No token, skipping fetch");
+      return;
     }
-  }, [authLoading, token, user, router]);
 
-  // Effect 2: Load profile
-  useEffect(() => {
-    if (authLoading) return;
-    if (!token) return;
-    if (hasFetchedProfile.current) return;
+    setLoading(true);
+    setMessage(null);
 
-    hasFetchedProfile.current = true;
+    try {
+      const apiUrl = gameStoreApiUrl("/customers/me");
+      console.log("📡 Fetching profile:", apiUrl);
+      console.log("📡 Token:", token.substring(0, 20) + "...");
 
-    let cancelled = false;
+      const res = await fetch(apiUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      });
 
-    (async () => {
-      setLoading(true);
-      setMessage(null);
+      console.log("📡 Response status:", res.status);
 
-      try {
-        const apiUrl = gameStoreApiUrl("/customers/me");
-        console.log("🔍 GAME_STORE_API_BASE_URL:", GAME_STORE_API_BASE_URL);
-        console.log("🔍 Full API URL:", apiUrl);
-        console.log(
-          "🔍 Token:",
-          token ? `${token.substring(0, 30)}...` : "MISSING"
+      // Handle 401
+      if (res.status === 401) {
+        console.log("❌ Unauthorized - logging out");
+        logout();
+        router.replace(
+          `/user/login?next=${encodeURIComponent("/user/profile")}`
         );
+        return;
+      }
 
-        const res = await fetch(apiUrl, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          cache: "no-store",
-        });
-
-        console.log("📡 Response status:", res.status);
-        console.log(
-          "📡 Response headers:",
-          Object.fromEntries(res.headers.entries())
-        );
-
-        if (cancelled) return;
-
-        // Handle 404
-        if (res.status === 404) {
-          console.error("❌ API endpoint not found. Check backend routes.");
-          setMessage({
-            type: "error",
-            text: "Profile endpoint not found. Please contact support.",
-          });
-          setLoading(false);
-          return;
-        }
-
-        // Handle 401
-        if (res.status === 401) {
-          logout();
-          router.replace(
-            `/user/login?next=${encodeURIComponent("/user/profile")}`
-          );
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error("Failed to load profile");
-        }
-
-        const data = await res.json();
-
-        if (cancelled) return;
-
-        setProfile(data);
-        setForm({
-          username: data.username ?? form.username,
-          email: data.email ?? form.email,
-          phoneNumber: data.phoneNumber ?? "",
-          genderId: data.genderId ?? "",
-          bankName: data.bankName ?? "",
-          description: data.description ?? "",
-        });
-      } catch (err) {
-        if (cancelled) return;
-
-        console.error("Profile load error:", err);
+      // Handle 404
+      if (res.status === 404) {
+        console.log("❌ Profile endpoint not found");
         setMessage({
           type: "error",
-          text: "Failed to load profile. Please try again.",
+          text: "Profile endpoint not found. Please contact support.",
         });
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        return;
       }
-    })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [authLoading, token]);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("❌ HTTP Error:", res.status, errorText);
+        throw new Error(`HTTP ${res.status}: ${errorText}`);
+      }
+
+      const data = await res.json();
+      console.log("✅ Profile loaded:", data);
+
+      setProfile(data);
+      setForm({
+        username: data.username ?? user?.name ?? "",
+        email: data.email ?? user?.email ?? "",
+        phoneNumber: data.phoneNumber ?? "",
+        genderId: data.genderId ?? "",
+        bankName: data.bankName ?? "",
+        description: data.description ?? "",
+      });
+    } catch (err) {
+      console.error("❌ Profile load error:", err);
+      setMessage({
+        type: "error",
+        text:
+          err instanceof Error
+            ? err.message
+            : "Failed to load profile. Please try again.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [token, user, logout, router]);
+
+  // ✅ Auth check effect
+  useEffect(() => {
+    if (authLoading) {
+      console.log("⏳ Auth loading...");
+      return;
+    }
+
+    if (!token || !user) {
+      console.log("❌ Not authenticated, redirecting to login");
+      setRedirecting(true);
+      router.replace(`/user/login?next=${encodeURIComponent("/user/profile")}`);
+      return;
+    }
+
+    console.log("✅ Authenticated, user:", user);
+  }, [authLoading, token, user, router]);
+
+  // ✅ Fetch profile effect - separate from auth check
+  useEffect(() => {
+    if (authLoading || !token || !user) {
+      return;
+    }
+
+    console.log("🔄 Triggering profile fetch");
+    fetchProfile();
+  }, [authLoading, token, user?.id, fetchProfile]);
 
   const gamerNumber = useMemo(() => {
     const input =
-      profile?._id ??
-      profile?.id ??
-      user?.id ??
-      profile?.email ??
-      user?.email ??
-      "gamer";
+      profile?._id ?? profile?.id ?? user?.id ?? user?.email ?? "gamer";
     return hashToSixDigits(String(input));
-  }, [profile?._id, profile?.id, profile?.email, user?.email, user?.id]);
+  }, [profile, user]);
 
   const namePlaceholder = useMemo(() => {
     const base = (form.username || user?.name || "Gamer").trim() || "Gamer";
     return `${base}-#${gamerNumber}`;
-  }, [form.username, gamerNumber, user?.name]);
+  }, [form.username, gamerNumber, user]);
 
   const onSave = useCallback(async () => {
     if (!token) return;
+
     setSaving(true);
     setMessage(null);
 
@@ -260,6 +206,8 @@ export default function ProfilePage() {
         bankName: form.bankName.trim() || undefined,
         description: form.description.trim() || undefined,
       };
+
+      console.log("💾 Saving profile:", payload);
 
       const res = await fetch(gameStoreApiUrl("/customers/me"), {
         method: "PATCH",
@@ -284,8 +232,10 @@ export default function ProfilePage() {
       }
 
       const updated = await res.json();
-
+      console.log("✅ Profile saved:", updated);
       setProfile(updated);
+
+      // Update form with server response
       setForm({
         username: updated.username ?? form.username,
         email: updated.email ?? form.email,
@@ -295,10 +245,14 @@ export default function ProfilePage() {
         description: updated.description ?? form.description,
       });
 
-      login(updated, token);
+      // Update auth context
+      if (user) {
+        login({ ...user, name: updated.username }, token);
+      }
+
       setMessage({ type: "success", text: "Saved successfully." });
     } catch (err) {
-      console.error("Save error:", err);
+      console.error("❌ Save error:", err);
       setMessage({
         type: "error",
         text: err instanceof Error ? err.message : "Failed to save profile.",
@@ -306,8 +260,9 @@ export default function ProfilePage() {
     } finally {
       setSaving(false);
     }
-  }, [token, form, logout, router, login]);
+  }, [token, form, logout, router, login, user]);
 
+  // ✅ Loading state
   if (authLoading) {
     return (
       <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
@@ -321,94 +276,87 @@ export default function ProfilePage() {
     );
   }
 
-  if (!token || !user) {
+  // ✅ Not logged in
+  if (!token || !user || redirecting) {
     return null;
   }
 
+  // ✅ Profile loading
   if (loading) {
     return (
       <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
         <div className="flex w-full flex-col gap-12 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
           <TopBar />
-
-          <div className="grid gap-10 lg:grid-cols-[360px_1fr]">
-            <aside className="overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-black/20 shadow-2xl backdrop-blur">
-              <div className="bg-white/10 px-6 py-6">
-                <div className="h-8 w-32 bg-white/20 rounded animate-pulse" />
-                <div className="h-4 w-40 bg-white/10 rounded mt-2 animate-pulse" />
-              </div>
-              <div className="divide-y divide-white/10">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="px-6 py-5">
-                    <div className="h-6 w-48 bg-white/10 rounded animate-pulse" />
-                    <div className="h-4 w-56 bg-white/5 rounded mt-2 animate-pulse" />
-                  </div>
-                ))}
-              </div>
-            </aside>
-
-            <main className="rounded-3xl border border-white/10 bg-[#1b1a55]/60 p-8 shadow-2xl backdrop-blur">
-              <div className="space-y-6">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="space-y-2">
-                    <div className="h-6 w-32 bg-white/20 rounded animate-pulse" />
-                    <div className="h-11 w-full bg-[#535c91]/50 rounded-[10px] animate-pulse" />
-                  </div>
-                ))}
-              </div>
-            </main>
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center space-y-4">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+              <p className="text-white/60">Loading your profile...</p>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
+  // ✅ Main UI
   return (
     <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
       <div className="flex w-full flex-col gap-12 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
         <TopBar />
 
         <div className="grid gap-10 lg:grid-cols-[360px_1fr]">
+          {/* Sidebar */}
           <aside className="overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-black/20 shadow-2xl backdrop-blur">
             <div className="bg-white/10 px-6 py-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-2xl font-semibold">My Account</p>
-                  <p className="mt-1 text-sm text-white/60">
-                    Account Management
-                  </p>
-                </div>
-                {loading && (
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
-                )}
-              </div>
+              <p className="text-2xl font-semibold">My Account</p>
+              <p className="mt-1 text-sm text-white/60">Account Management</p>
             </div>
-
             <div className="divide-y divide-white/10">
-              <AccountSidebarItem
-                title="Personal Information"
-                subtitle="Modify Your Personal Information"
+              <Link
                 href="/user/profile"
-                active
-              />
-              <AccountSidebarItem
-                title="My Orders"
-                subtitle="View Your Previous Orders"
+                className="relative block px-6 py-5 bg-white/10"
+              >
+                <span className="absolute left-0 top-0 h-full w-2 bg-white/20" />
+                <p className="text-lg font-semibold text-white/60">
+                  Personal Information
+                </p>
+                <p className="mt-1 text-sm text-white/55">
+                  Modify Your Personal Information
+                </p>
+              </Link>
+              <Link
                 href="/user/orders"
-              />
-              <AccountSidebarItem
-                title="Wishlist"
-                subtitle="View Games You Added in Wishlist"
+                className="block px-6 py-5 hover:bg-white/5"
+              >
+                <p className="text-lg font-semibold text-white">My Orders</p>
+                <p className="mt-1 text-sm text-white/55">
+                  View Your Previous Orders
+                </p>
+              </Link>
+              <Link
                 href="/wishlist"
-              />
-              <AccountSidebarItem
-                title="Payment Methods"
-                subtitle="Adjust Your Payment Method"
+                className="block px-6 py-5 hover:bg-white/5"
+              >
+                <p className="text-lg font-semibold text-white">Wishlist</p>
+                <p className="mt-1 text-sm text-white/55">
+                  View Games You Added in Wishlist
+                </p>
+              </Link>
+              <Link
                 href="/user/payment-methods"
-              />
+                className="block px-6 py-5 hover:bg-white/5"
+              >
+                <p className="text-lg font-semibold text-white">
+                  Payment Methods
+                </p>
+                <p className="mt-1 text-sm text-white/55">
+                  Adjust Your Payment Method
+                </p>
+              </Link>
             </div>
           </aside>
 
+          {/* Main Form */}
           <main className="rounded-3xl border border-white/10 bg-[#1b1a55]/60 p-8 shadow-2xl backdrop-blur">
             <div className="space-y-6">
               <div className="space-y-2">
@@ -434,7 +382,6 @@ export default function ProfilePage() {
                   />
                   <p className="text-xs text-cyan-300">Email Verified</p>
                 </div>
-
                 <div className="space-y-2">
                   <p className="text-xl font-semibold">Mobile</p>
                   <Input
@@ -461,7 +408,6 @@ export default function ProfilePage() {
                     placeholder="Male/Female/Other"
                   />
                 </div>
-
                 <div className="space-y-2">
                   <p className="text-xl font-semibold">Bank Name</p>
                   <Input
@@ -500,7 +446,6 @@ export default function ProfilePage() {
                       ${profile.accountBalance.toFixed(2)}
                     </div>
                   </div>
-
                   <div className="space-y-2">
                     <p className="text-xl font-semibold">Loyalty Points</p>
                     <div className="h-11 flex items-center rounded-[10px] bg-[#535c91]/50 px-4 text-sm text-white/80">
@@ -510,17 +455,7 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              <div className="space-y-1">
-                <p className="text-xl font-semibold">Password</p>
-                <Link
-                  href="/user/forgot"
-                  className="text-sm text-cyan-300 hover:underline"
-                >
-                  Recover password
-                </Link>
-              </div>
-
-              {message ? (
+              {message && (
                 <div
                   className={`rounded-[12px] border px-4 py-3 text-sm ${
                     message.type === "success"
@@ -530,74 +465,19 @@ export default function ProfilePage() {
                 >
                   {message.text}
                 </div>
-              ) : null}
+              )}
 
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={onSave}
-                  disabled={saving}
-                  className="h-11 w-[110px] rounded-full bg-white text-sm font-semibold text-[#1b1a55] disabled:opacity-60"
-                >
-                  {saving ? "Saving…" : "Save"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={saving}
+                className="h-11 w-[110px] rounded-full bg-white text-sm font-semibold text-[#1b1a55] disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
             </div>
           </main>
         </div>
-
-        <footer className="mt-6 space-y-6 border-t border-white/10 pt-8">
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-center gap-3">
-              <img src={logo} alt="GameVerse" className="h-10 w-10" />
-              <span className="text-xl font-semibold">GameVerse</span>
-            </div>
-            <div className="space-y-2 max-w-xl text-sm text-white/80">
-              GameVerse — Where every gamer levels up! From epic AAA adventures
-              to indie gems, grab the hottest deals on PC, Xbox, PlayStation &
-              Nintendo. Play more, pay less.
-            </div>
-            <div className="grid grid-cols-2 gap-10 text-sm">
-              <div className="space-y-2">
-                <p className="text-base font-semibold text-white">My Account</p>
-                <Link href="/user/account" className="block text-white/80">
-                  My Account
-                </Link>
-                <Link href="/user/orders" className="block text-white/80">
-                  My Orders
-                </Link>
-              </div>
-              <div className="space-y-2">
-                <p className="text-base font-semibold text-white">Support</p>
-                <Link href="/terms" className="block text-white/80">
-                  Terms and conditions
-                </Link>
-                <Link href="/privacy" className="block text-white/80">
-                  Privacy and cookie policy
-                </Link>
-                <Link href="/refunds" className="block text-white/80">
-                  Refund policy
-                </Link>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-between border-t border-white/10 pt-4">
-            <p className="text-sm text-white/70">
-              Copyright GameVerse.com 2025, all rights reserved
-            </p>
-            <div className="flex items-center gap-3">
-              {socials.map((icon) => (
-                <img
-                  key={icon}
-                  src={icon}
-                  alt="social"
-                  className="h-8 w-8"
-                  loading="lazy"
-                />
-              ))}
-            </div>
-          </div>
-        </footer>
       </div>
     </div>
   );
