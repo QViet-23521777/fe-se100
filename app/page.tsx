@@ -269,22 +269,28 @@ function toSteamGameItem(
 
 const upcomingGames: GameItem[] = [
   {
+    steamAppId: 1941540,
     title: "Mafia: The Old Country",
     price: "$49.99",
     cta: "Pre-Order",
-    image: "/assets/card-36-619.jpg",
+    image:
+      "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1941540/d06980bb8f41737ca68da8eed40079347db09c84/header.jpg?t=1764177372",
   },
   {
-    title: "EA SPORTS FC™ 26",
+    steamAppId: 3405690,
+    title: "EA SPORTS FC 26",
     price: "$69.99",
     cta: "Pre-Order",
-    image: "/assets/card-36-620.jpg",
+    image:
+      "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3405690/2d96aa1b06e453cd62dae9029d412f19e61932c3/header.jpg?t=1765797265",
   },
   {
+    steamAppId: 1620730,
     title: "Hell is Us",
     price: "$29.99",
     cta: "Pre-Order",
-    image: "/assets/card-36-621.jpg",
+    image:
+      "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1620730/7d40fd2849a6b259ee4de2b77dd643e9306104aa/header.jpg?t=1760603460",
   },
   {
     title: "Starfall Odyssey",
@@ -903,7 +909,11 @@ export default async function Home() {
   const bestDealPicked = takeUnique(dealsPool, perRow);
   const bestsellerPicked = takeUnique(popularPool, perRow);
   const trendingPicked = takeUnique(popularPool.slice(perRow), perRow);
-  const upcomingPicked = takeUnique(upcomingPool, perRow);
+  const upcomingBase = takeUnique(upcomingPool, perRow);
+  const upcomingPicked =
+    upcomingBase.length >= perRow
+      ? upcomingBase
+      : [...upcomingBase, ...takeUnique(popularPool, perRow - upcomingBase.length)];
 
   const featuredScored =
     shuffle([...bestsellerPicked, ...trendingPicked, ...bestDealPicked])[0] ??
@@ -953,21 +963,15 @@ export default async function Home() {
     };
   });
 
-  function repeatToLength<T extends { id: string }>(items: T[], target: number) {
-    if (items.length >= target) return items.slice(0, target);
-    if (items.length === 0) return [];
-    const out: T[] = [];
-    while (out.length < target) {
-      const base = items[out.length % items.length];
-      out.push({ ...base, id: `${base.id}-${out.length}` });
-    }
-    return out;
-  }
-
   function fillToLength<T extends { id: string }>(primary: T[], fallback: T[], target: number) {
     if (primary.length >= target) return primary.slice(0, target);
-    const missing = target - primary.length;
-    return [...primary, ...repeatToLength(fallback, missing)];
+    if (primary.length > 0) {
+      const needed = target - primary.length;
+      const extras = fallback.filter((f) => !primary.some((p) => p.id === f.id)).slice(0, needed);
+      return [...primary, ...extras];
+    }
+    if (fallback.length >= target) return fallback.slice(0, target);
+    return fallback.slice();
   }
 
   const upcomingItems = fillToLength(

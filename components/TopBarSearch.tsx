@@ -4,10 +4,11 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 
 type Suggestion = {
-  steamAppId: number;
+  type: "steam" | "game";
+  id: string;
+  steamAppId?: number;
   name: string;
-  avatarUrl?: string;
-  isFree?: boolean;
+  avatarUrl?: string | null;
   price?: string | null;
   originalPrice?: string | null;
   discountPercent?: number | null;
@@ -33,7 +34,7 @@ export function TopBarSearch({
   const abortRef = useRef<AbortController | null>(null);
 
   const normalizedQuery = query.trim();
-  const canSearch = normalizedQuery.length >= 2;
+  const canSearch = normalizedQuery.length >= 1;
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent | TouchEvent) {
@@ -60,7 +61,6 @@ export function TopBarSearch({
   }, []);
 
   useEffect(() => {
-    if (!open) return;
     if (!canSearch) {
       setItems([]);
       setLoading(false);
@@ -76,7 +76,7 @@ export function TopBarSearch({
       setLoading(true);
       try {
         const res = await fetch(
-          `/api/steam-apps/search?q=${encodeURIComponent(
+          `/api/search?q=${encodeURIComponent(
             normalizedQuery
           )}&limit=${Math.min(Math.max(Math.floor(limit), 1), 20)}`,
           { signal: controller.signal }
@@ -112,7 +112,11 @@ export function TopBarSearch({
     setQuery("");
     setItems([]);
     setActiveIndex(-1);
-    router.push(`/product/${item.steamAppId}`);
+    if (item.type === "steam" && item.steamAppId) {
+      router.push(`/product/${item.steamAppId}`);
+      return;
+    }
+    router.push(`/product/game/${item.id}`);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -121,8 +125,6 @@ export function TopBarSearch({
       setActiveIndex(-1);
       return;
     }
-
-    if (!open) return;
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -146,6 +148,13 @@ export function TopBarSearch({
       if (activeIndex >= 0 && activeIndex < items.length) {
         event.preventDefault();
         goToItem(items[activeIndex]);
+        return;
+      }
+
+      if (normalizedQuery.length > 0) {
+        event.preventDefault();
+        setOpen(false);
+        router.push(`/browse?search=${encodeURIComponent(normalizedQuery)}`);
       }
     }
   }
@@ -184,7 +193,7 @@ export function TopBarSearch({
           ) : (
             <ul className="max-h-[360px] overflow-y-auto py-2">
               {items.map((item, idx) => (
-                <li key={item.steamAppId}>
+                <li key={`${item.type}-${item.id}`}>
                   <button
                     type="button"
                     onMouseDown={(e) => {

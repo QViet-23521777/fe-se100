@@ -126,13 +126,13 @@ export default function CarouselRow({
 
         <div
           ref={scrollerRef}
-          className="no-scrollbar flex snap-x snap-mandatory gap-6 overflow-x-auto scroll-smooth px-1 pb-2"
+          className="no-scrollbar flex snap-x snap-mandatory gap-6 overflow-x-auto scroll-smooth px-1 pb-2 md:px-14"
         >
           {items.map((item) => {
             const asNumber = Number(item.id);
             const steamAppId =
               Number.isFinite(asNumber) && Number.isInteger(asNumber) ? asNumber : undefined;
-            const href = steamAppId ? `/product/${steamAppId}` : "/browse";
+            const href = steamAppId ? `/product/${steamAppId}` : `/product/game/${item.id}`;
             const storeItem = {
               steamAppId,
               slug: steamAppId ? undefined : item.id,

@@ -112,6 +112,24 @@ export default function ProfilePage() {
 
     let active = true;
     (async () => {
+      // For admin/publisher, skip customer endpoint and just show basic info
+      if (user?.accountType && user.accountType !== "customer") {
+        const fallback: CustomerProfile = {
+          id: user.id,
+          email: user.email,
+          username: user.name,
+          phoneNumber: "",
+        };
+        setProfile(fallback);
+        setForm({
+          username: fallback.username ?? "",
+          email: fallback.email ?? "",
+          phoneNumber: fallback.phoneNumber ?? "",
+        });
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setMessage(null);
       try {
@@ -167,8 +185,38 @@ export default function ProfilePage() {
     return `${base}-#${gamerNumber}`;
   }, [mounted, form.username, gamerNumber, user?.name]);
 
+  const sidebarItems = useMemo(() => {
+    if (user?.accountType === "admin") {
+      return [
+        { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
+        { title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/admin/accounts" },
+        { title: "Manage Games", subtitle: "Create or edit games", href: "/publisher/game/create" },
+        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/admin/promotions" },
+      ];
+    }
+    if (user?.accountType === "publisher") {
+      return [
+        { title: "Personal Information", subtitle: "Modify Your Personal Information", href: "/user/profile" },
+        { title: "Manage Games", subtitle: "Create or edit games", href: "/publisher/game/create" },
+      ];
+    }
+    return [
+      { title: "Personal Information", subtitle: "Modify Your Personal Information", href: "/user/profile" },
+      { title: "My Orders", subtitle: "View Your Previous Orders", href: "/user/orders" },
+      { title: "Wishlist", subtitle: "View Games You Added in Wishlist", href: "/wishlist" },
+      { title: "Payment Methods", subtitle: "Adjust Your Payment Method", href: "/user/payment-methods" },
+    ];
+  }, [user?.accountType]);
+
   async function onSave() {
     if (!token) return;
+    if (user?.accountType && user.accountType !== "customer") {
+      setMessage({
+        type: "error",
+        text: "Editing profile is only available for customer accounts.",
+      });
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
@@ -227,27 +275,15 @@ export default function ProfilePage() {
             </div>
 
             <div className="divide-y divide-white/10">
-              <AccountSidebarItem
-                title="Personal Information"
-                subtitle="Modify Your Personal Information"
-                href="/user/profile"
-                active
-              />
-              <AccountSidebarItem
-                title="My Orders"
-                subtitle="View Your Previous Orders"
-                href="/user/orders"
-              />
-              <AccountSidebarItem
-                title="Wishlist"
-                subtitle="View Games You Added in Wishlist"
-                href="/wishlist"
-              />
-              <AccountSidebarItem
-                title="Payment Methods"
-                subtitle="Adjust Your Payment Method"
-                href="/user/payment-methods"
-              />
+              {sidebarItems.map((item) => (
+                <AccountSidebarItem
+                  key={item.href}
+                  title={item.title}
+                  subtitle={item.subtitle}
+                  href={item.href}
+                  active={item.href === "/user/profile"}
+                />
+              ))}
             </div>
           </aside>
 

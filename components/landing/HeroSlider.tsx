@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useStore } from "@/app/context/StoreContext";
+import { useAuth } from "@/app/context/AuthContext";
 
 export type HeroSlide = {
   id: string;
@@ -50,7 +52,9 @@ function ChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
 
 export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { addToCart, isWishlisted, toggleWishlist } = useStore();
+  const { token, user } = useAuth();
   const safeSlides = useMemo(
     () => (slides.length > 0 ? slides : []),
     [slides]
@@ -88,6 +92,10 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   if (!current || !storeItem) return null;
 
   const wishlisted = isWishlisted(storeItem);
+  const loginHref = useMemo(
+    () => `/user/login?next=${encodeURIComponent(pathname ?? "/")}`,
+    [pathname]
+  );
 
   return (
     <section
@@ -127,6 +135,10 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
             <button
               type="button"
               onClick={() => {
+                if (!token || user?.accountType !== "customer") {
+                  router.push(loginHref);
+                  return;
+                }
                 addToCart(storeItem, 1);
                 router.push("/checkout");
               }}

@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useStore, type StoreItemInput } from "@/app/context/StoreContext";
+import { useAuth } from "@/app/context/AuthContext";
 
 function HeartIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -28,8 +30,15 @@ export function WishlistIconButton({
   item: StoreItemInput;
   className?: string;
 }) {
+  const { token, user } = useAuth();
   const { isWishlisted, toggleWishlist } = useStore();
+  const router = useRouter();
+  const pathname = usePathname();
   const active = isWishlisted(item);
+  const loginHref = useMemo(
+    () => `/user/login?next=${encodeURIComponent(pathname ?? "/")}`,
+    [pathname]
+  );
 
   return (
     <button
@@ -37,6 +46,10 @@ export function WishlistIconButton({
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!token || user?.accountType !== "customer") {
+          router.push(loginHref);
+          return;
+        }
         toggleWishlist(item);
       }}
       aria-label={active ? "Remove from wishlist" : "Add to wishlist"}
@@ -61,8 +74,15 @@ export function AddToCartPillButton({
   label: string;
   className?: string;
 }) {
+  const { token, user } = useAuth();
   const { addToCart } = useStore();
+  const router = useRouter();
+  const pathname = usePathname();
   const [flash, setFlash] = useState<"idle" | "added">("idle");
+  const loginHref = useMemo(
+    () => `/user/login?next=${encodeURIComponent(pathname ?? "/")}`,
+    [pathname]
+  );
 
   const text = useMemo(() => {
     if (flash === "added") return "Added";
@@ -75,6 +95,10 @@ export function AddToCartPillButton({
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!token || user?.accountType !== "customer") {
+          router.push(loginHref);
+          return;
+        }
         addToCart(item, 1);
         setFlash("added");
         window.setTimeout(() => setFlash("idle"), 900);
@@ -98,14 +122,25 @@ export function WishlistTextButton({
   label?: string;
   className?: string;
 }) {
+  const { token, user } = useAuth();
   const { isWishlisted, toggleWishlist } = useStore();
+  const router = useRouter();
+  const pathname = usePathname();
   const active = isWishlisted(item);
+  const loginHref = useMemo(
+    () => `/user/login?next=${encodeURIComponent(pathname ?? "/")}`,
+    [pathname]
+  );
 
   return (
     <button
       type="button"
       onClick={(e) => {
         e.preventDefault();
+        if (!token || user?.accountType !== "customer") {
+          router.push(loginHref);
+          return;
+        }
         toggleWishlist(item);
       }}
       className={className ?? "rounded-full border border-white/80 px-6 py-3 text-base font-semibold text-white"}
@@ -121,26 +156,40 @@ export function ProductActions({
   item: StoreItemInput;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const { token, user } = useAuth();
   const { addToCart, isWishlisted, toggleWishlist } = useStore();
   const [added, setAdded] = useState(false);
   const wishlisted = isWishlisted(item);
+  const loginHref = useMemo(
+    () => `/user/login?next=${encodeURIComponent(pathname ?? "/")}`,
+    [pathname]
+  );
 
   return (
     <div className="flex flex-col gap-3">
-      <button
-        type="button"
-        onClick={() => {
-          addToCart(item, 1);
-          router.push("/checkout");
-        }}
-        className="rounded-full bg-white px-4 py-2 text-[#1b1a55] font-semibold"
-      >
+        <button
+          type="button"
+          onClick={() => {
+            if (!token || user?.accountType !== "customer") {
+              router.push(loginHref);
+              return;
+            }
+            addToCart(item, 1);
+            router.push("/checkout");
+          }}
+          className="rounded-full bg-white px-4 py-2 text-[#1b1a55] font-semibold"
+        >
         Buy Now
       </button>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           type="button"
           onClick={() => {
+            if (!token || user?.accountType !== "customer") {
+              router.push(loginHref);
+              return;
+            }
             addToCart(item, 1);
             setAdded(true);
             window.setTimeout(() => setAdded(false), 900);
@@ -151,7 +200,13 @@ export function ProductActions({
         </button>
         <button
           type="button"
-          onClick={() => toggleWishlist(item)}
+          onClick={() => {
+            if (!token || user?.accountType !== "customer") {
+              router.push(loginHref);
+              return;
+            }
+            toggleWishlist(item);
+          }}
           className="rounded-full border border-white/30 px-4 py-2 font-semibold text-white"
         >
           {wishlisted ? "Wishlisted" : "Add to Wishlist"}
@@ -160,4 +215,3 @@ export function ProductActions({
     </div>
   );
 }
-

@@ -106,37 +106,6 @@ type Option = {
   icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactNode;
 };
 
-const OPTIONS: Option[] = [
-  {
-    key: "personal",
-    title: "Personal Information",
-    subtitle: "Modify Your Personal Information",
-    href: "/user/profile",
-    icon: (props) => <UserIcon {...props} />,
-  },
-  {
-    key: "orders",
-    title: "My Orders",
-    subtitle: "Manage Your Previous Orders",
-    href: "/user/orders",
-    icon: (props) => <CartIcon {...props} />,
-  },
-  {
-    key: "wishlist",
-    title: "Wishlist",
-    subtitle: "View Games You Added in Wishlist",
-    href: "/wishlist",
-    icon: (props) => <HeartIcon {...props} />,
-  },
-  {
-    key: "payments",
-    title: "Payment Methods",
-    subtitle: "Adjust Your Payment Method",
-    href: "/user/payment-methods",
-    icon: (props) => <WalletIcon {...props} />,
-  },
-];
-
 function SidebarItem({
   title,
   subtitle,
@@ -199,6 +168,98 @@ export default function AccountOptionsPage() {
     return hashToSixDigits(String(input));
   }, [user?.email, user?.id, user?.name]);
 
+  const options: Option[] = useMemo(() => {
+    if (user?.accountType === "admin") {
+      return [
+        {
+          key: "personal",
+          title: "Personal Information",
+          subtitle: "Modify your personal information",
+          href: "/user/profile",
+          icon: (props) => <UserIcon {...props} />,
+        },
+        {
+          key: "admin-accounts",
+          title: "Manage Accounts",
+          subtitle: "Create or edit admin/publisher accounts",
+          href: "/admin/accounts",
+          icon: (props) => <UserIcon {...props} />,
+        },
+        {
+          key: "games",
+          title: "Manage Games",
+          subtitle: "Create or edit games",
+          href: "/publisher/game/create",
+          icon: (props) => <CartIcon {...props} />,
+        },
+        {
+          key: "promos",
+          title: "Manage Promo Codes",
+          subtitle: "Create and manage promotions",
+          href: "/admin/promotions",
+          icon: (props) => <WalletIcon {...props} />,
+        },
+      ];
+    }
+
+    if (user?.accountType === "publisher") {
+      return [
+        {
+          key: "personal",
+          title: "Personal Information",
+          subtitle: "Modify Your Personal Information",
+          href: "/user/profile",
+          icon: (props) => <UserIcon {...props} />,
+        },
+        {
+          key: "games",
+          title: "Manage Games",
+          subtitle: "Create or edit games",
+          href: "/publisher/game/create",
+          icon: (props) => <CartIcon {...props} />,
+        },
+        {
+          key: "orders",
+          title: "Orders",
+          subtitle: "View orders for your games",
+          href: "/user/orders",
+          icon: (props) => <CartIcon {...props} />,
+        },
+      ];
+    }
+
+    return [
+      {
+        key: "personal",
+        title: "Personal Information",
+        subtitle: "Modify Your Personal Information",
+        href: "/user/profile",
+        icon: (props) => <UserIcon {...props} />,
+      },
+      {
+        key: "orders",
+        title: "My Orders",
+        subtitle: "Manage Your Previous Orders",
+        href: "/user/orders",
+        icon: (props) => <CartIcon {...props} />,
+      },
+      {
+        key: "wishlist",
+        title: "Wishlist",
+        subtitle: "View Games You Added in Wishlist",
+        href: "/wishlist",
+        icon: (props) => <HeartIcon {...props} />,
+      },
+      {
+        key: "payments",
+        title: "Payment Methods",
+        subtitle: "Adjust Your Payment Method",
+        href: "/user/payment-methods",
+        icon: (props) => <WalletIcon {...props} />,
+      },
+    ];
+  }, [user?.accountType]);
+
   if (!mounted) {
     return (
       <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
@@ -227,26 +288,14 @@ export default function AccountOptionsPage() {
             </div>
 
             <div className="divide-y divide-white/10">
-              <SidebarItem
-                title="Personal Information"
-                subtitle="Modify Your Personal Information"
-                href="/user/profile"
-              />
-              <SidebarItem
-                title="My Orders"
-                subtitle="View Your Previous Orders"
-                href="/user/orders"
-              />
-              <SidebarItem
-                title="Wishlist"
-                subtitle="View Games You Added in Wishlist"
-                href="/wishlist"
-              />
-              <SidebarItem
-                title="Payment Methods"
-                subtitle="Adjust Your Payment Method"
-                href="/user/payment-methods"
-              />
+              {options.map((option) => (
+                <SidebarItem
+                  key={option.key}
+                  title={option.title}
+                  subtitle={option.subtitle}
+                  href={option.href}
+                />
+              ))}
             </div>
 
             <div className="px-6 py-6">
@@ -273,7 +322,7 @@ export default function AccountOptionsPage() {
             </div>
 
             <div className="mt-8 grid gap-6 sm:grid-cols-2">
-              {OPTIONS.map((option) => (
+              {options.map((option) => (
                 <ActionCard key={option.key} option={option} />
               ))}
             </div>
