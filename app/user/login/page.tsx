@@ -1,182 +1,240 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../../context/AuthContext";
 
-// Icon Components
-const MailIcon = () => (
-  <svg
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-    <polyline points="22,6 12,13 2,6"></polyline>
-  </svg>
-);
+import { useAuth } from "@/app/context/AuthContext";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
 
-const LockIcon = () => (
-  <svg
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-  </svg>
-);
+const wallpaper = "/assets/3dda024677e7245b10f9e299656e6b659ed0739d.png";
 
-const LoginPage = () => {
-  const router = useRouter(); // ✅ Đúng vị trí
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
+type Message = { type: "error" | "success"; text: string };
+
+function safeNextPath(value: string | null) {
+  if (!value) return "/";
+  if (!value.startsWith("/")) return "/";
+  if (value.startsWith("//")) return "/";
+  return value;
+}
+
+function EyeIcon({ open }: { open: boolean }) {
+  if (open) {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+        <path
+          d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+      <path
+        d="M3 3l18 18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.58 10.58A3 3 0 0 0 12 15a3 3 0 0 0 2.12-.88"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.88 5.09A10.3 10.3 0 0 1 12 5c6.4 0 10 7 10 7a17.1 17.1 0 0 1-2.64 3.78"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6.34 6.34C3.8 8.16 2 12 2 12s3.6 7 10 7c1.2 0 2.3-.2 3.27-.55"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export default function LoginPage() {
+  const router = useRouter();
+  const { user, token, login } = useAuth();
+
+  const [nextPath, setNextPath] = useState("/");
+
+  useEffect(() => {
+    try {
+      const next = new URLSearchParams(window.location.search).get("next");
+      setNextPath(safeNextPath(next));
+    } catch {
+      setNextPath("/");
+    }
+  }, []);
+
+  const [formData, setFormData] = useState({ email: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState<Message | null>(null);
 
-  const { login } = useAuth();
+  useEffect(() => {
+    if (!user || !token) return;
+    router.replace(nextPath);
+  }, [nextPath, router, token, user]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setMessage(null);
+
     try {
-      const res = await fetch("http://localhost:3000/auth/customer/login", {
+      const res = await fetch(gameStoreApiUrl("/auth/customer/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          email: formData.email.trim(),
+          password: formData.password,
+        }),
       });
 
-      const data = await res.json();
+      const data = (await res.json().catch(() => null)) as
+        | { token?: string; user?: unknown; message?: string }
+        | null;
 
-      if (!res.ok) {
-        alert(data.message || "Đăng nhập thất bại!");
-        setIsLoading(false);
+      if (!res.ok || !data?.token || !data?.user) {
+        setMessage({
+          type: "error",
+          text: data?.message || "Login failed. Please check your email/password.",
+        });
         return;
       }
 
-      // ✅ Strip "Bearer " nếu backend trả về kèm prefix
-      const cleanToken = data.token.replace(/^Bearer\s+/i, "").trim();
-
-      // Lưu token thuần (không có "Bearer ")
-      login(data.user, cleanToken);
-
-      alert("Đăng nhập thành công!");
-      router.push("/");
+      login(data.user as any, data.token);
+      setMessage({ type: "success", text: "Logged in! Redirecting..." });
+      router.push(nextPath);
     } catch (err) {
       console.error(err);
-      alert("Lỗi kết nối server!");
+      setMessage({ type: "error", text: "Server connection error." });
     } finally {
       setIsLoading(false);
     }
   };
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="signup-card p-8 rounded-xl shadow-xl bg-dark-100 border border-dark-200">
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold mb-3">Đăng Nhập</h1>
-            <p className="text-light-200 text-lg">
-              Chào mừng bạn quay trở lại!
-            </p>
-          </div>
+    <div className="min-h-screen bg-[#070f2b] text-white flex items-center justify-center px-6 py-12">
+      <div className="relative grid w-full items-center gap-10 lg:grid-cols-[540px_minmax(0,1fr)]">
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          className="absolute left-2 top-2 text-white/70 text-2xl leading-none"
+          aria-label="Close"
+        >
+          ×
+        </button>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-            {/* Email */}
+        <div className="flex flex-col gap-6">
+          <h1 className="mt-10 text-5xl font-semibold">Welcome Back</h1>
+          <form onSubmit={handleSubmit} className="space-y-4 max-w-[520px]">
             <div>
-              <label
-                htmlFor="email"
-                className="text-light-100 text-base font-semibold mb-2 block"
-              >
-                Email
-              </label>
-              <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-light-200">
-                  <MailIcon />
-                </div>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="example@email.com"
-                  className="bg-dark-200 rounded-lg pl-12 pr-4 py-3 w-full text-light-100 placeholder:text-light-200/50 border border-dark-300 focus:border-primary focus:outline-none transition"
-                  required
-                />
-              </div>
+              <input
+                name="email"
+                type="email"
+                placeholder="Email Address"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+              />
             </div>
 
-            {/* Password */}
-            <div>
-              <label
-                htmlFor="password"
-                className="text-light-100 text-base font-semibold mb-2 block"
+            <div className="relative">
+              <input
+                name="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="Password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((p) => !p)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/80"
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                Mật khẩu
-              </label>
-              <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-light-200">
-                  <LockIcon />
-                </div>
-                <input
-                  type="password"
-                  id="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="••••••••"
-                  className="bg-dark-200 rounded-lg pl-12 pr-4 py-3 w-full text-light-100 placeholder:text-light-200/50 border border-dark-300 focus:border-primary focus:outline-none transition"
-                  required
-                />
-              </div>
+                <EyeIcon open={showPassword} />
+              </button>
             </div>
 
-            {/* Submit Button */}
+            <div className="flex justify-end text-sm font-semibold text-white">
+              <Link href="/user/forgot" className="hover:underline">
+                Forgot your password?
+              </Link>
+            </div>
+
+            {message ? (
+              <div
+                className={`rounded-[10px] border px-4 py-3 text-sm ${
+                  message.type === "success"
+                    ? "border-green-500/40 bg-green-500/10 text-green-200"
+                    : "border-red-500/40 bg-red-500/10 text-red-200"
+                }`}
+              >
+                {message.text}
+              </div>
+            ) : null}
+
             <button
               type="submit"
               disabled={isLoading}
-              className="bg-primary hover:bg-primary/90 transition text-black font-semibold py-3 rounded-lg text-lg disabled:opacity-50"
+              className="w-full rounded-[10px] bg-[#1b1a55] px-4 py-3 text-center text-lg font-semibold text-white shadow disabled:opacity-60"
             >
-              {isLoading ? "Đang xử lý..." : "Đăng nhập"}
+              {isLoading ? "Logging in..." : "Log in"}
             </button>
 
-            {/* Link to Register */}
-            <p className="text-center text-light-200 text-sm">
-              Chưa có tài khoản?{" "}
-              <button
-                type="button"
-                onClick={() => router.push("/user/register")}
-                className="text-primary font-semibold hover:opacity-90"
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-white/80">Don't have an account?</span>
+              <Link
+                href={`/user/register?next=${encodeURIComponent(nextPath)}`}
+                className="font-bold underline"
               >
-                Đăng ký ngay
-              </button>
-              {/* Hoặc dùng Link */}
-              {/* <Link href="/register" className="text-primary font-semibold hover:opacity-90">Đăng ký ngay</Link> */}
-            </p>
+                Sign up
+              </Link>
+            </div>
           </form>
+        </div>
+
+        <div className="overflow-hidden rounded-[25px] shadow-2xl">
+          <img
+            src={wallpaper}
+            alt="Login background"
+            className="h-[720px] w-full object-cover"
+            loading="lazy"
+          />
         </div>
       </div>
     </div>
   );
-};
-
-export default LoginPage;
+}

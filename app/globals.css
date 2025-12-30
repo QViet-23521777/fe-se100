@@ -11,7 +11,7 @@
   --color-dark-100: #0d161a;
   --color-dark-200: #182830;
   --radius: 0.625rem;
-  --background: #030708;
+  --background: #050b2a;
   --foreground: #ffffff;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -113,10 +113,11 @@
 
   body {
     @apply bg-background text-foreground;
+    background: #070f2b;
   }
 
   main {
-    @apply mx-auto container flex flex-col sm:px-10 px-5 py-10;
+    @apply flex flex-col w-full sm:px-10 px-5 py-10;
   }
 
   h1 {
@@ -129,6 +130,17 @@
 
   ul {
     @apply list-disc list-inside;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 

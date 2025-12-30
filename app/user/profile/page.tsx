@@ -1,435 +1,398 @@
 "use client";
 
-import { useAuth } from "@/app/context/AuthContext";
-import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-interface UserProfile {
-  id: string;
-  email: string;
-  phoneNumber: string;
-  username: string;
-  password?: string;
-  fullName?: string;
-  genderId?: string;
-  registrationDate: string;
-  accountStatus: string;
-  accountBalance: number;
-  bankType: string;
-  bankName: string;
-  description: string;
-  createdAt: string;
-  updatedAt: string;
+import { TopBar } from "@/components/TopBar";
+import { useAuth } from "@/app/context/AuthContext";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
+
+const logo = "/assets/figma-logo.svg";
+const socials = [
+  "/assets/figma-social-28-2108.svg",
+  "/assets/figma-social-28-2109.svg",
+  "/assets/figma-social-28-2110.svg",
+  "/assets/figma-social-28-2111.svg",
+];
+
+type CustomerProfile = {
+  id?: string;
+  email?: string;
+  username?: string;
+  phoneNumber?: string;
+};
+
+type Message = { type: "success" | "error"; text: string };
+
+function hashToSixDigits(input: string) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  const value = hash % 1_000_000;
+  return String(value).padStart(6, "0");
+}
+
+function AccountSidebarItem({
+  title,
+  subtitle,
+  href,
+  active,
+}: {
+  title: string;
+  subtitle: string;
+  href: string;
+  active?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`relative block px-6 py-5 transition ${
+        active ? "bg-white/10" : "hover:bg-white/5"
+      }`}
+    >
+      {active ? (
+        <span className="absolute left-0 top-0 h-full w-2 bg-white/20" />
+      ) : null}
+      <p
+        className={`text-lg font-semibold ${
+          active ? "text-white/60" : "text-white"
+        }`}
+      >
+        {title}
+      </p>
+      <p className="mt-1 text-sm text-white/55">{subtitle}</p>
+    </Link>
+  );
+}
+
+function Input({
+  value,
+  onChange,
+  placeholder,
+  readOnly,
+  name,
+}: {
+  name: string;
+  value: string;
+  onChange?: (value: string) => void;
+  placeholder?: string;
+  readOnly?: boolean;
+}) {
+  return (
+    <input
+      name={name}
+      value={value}
+      readOnly={readOnly}
+      placeholder={placeholder}
+      onChange={(e) => onChange?.(e.target.value)}
+      className={`h-11 w-full rounded-[10px] bg-[#535c91] px-4 text-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 ${
+        readOnly ? "opacity-80" : ""
+      }`}
+    />
+  );
 }
 
 export default function ProfilePage() {
-  const { user, token } = useAuth();
   const router = useRouter();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { user, token, login } = useAuth();
 
-  const [formData, setFormData] = useState({
+  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<Message | null>(null);
+  const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [form, setForm] = useState({
     username: "",
+    email: "",
     phoneNumber: "",
-    bankType: "",
-    bankName: "",
-    description: "",
   });
 
-  // ✅ FIX 1: Sử dụng useCallback để tránh fetchProfile bị tạo lại mỗi render
-  const fetchProfile = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  useEffect(() => setMounted(true), []);
 
-      const storedToken = localStorage.getItem("token");
-
-      if (!storedToken) {
-        throw new Error("No token found");
-      }
-
-      console.log(
-        "📡 Calling API with token:",
-        storedToken.substring(0, 20) + "..."
-      );
-
-      const response = await fetch("http://localhost:3000/customers/me", {
-        headers: {
-          Authorization: `Bearer ${storedToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      console.log("📥 Response status:", response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Error response:", errorText);
-        throw new Error(`Failed to fetch profile: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log("✅ Profile data received:", data);
-
-      setProfile(data);
-      setFormData({
-        username: data.username || "",
-        phoneNumber: data.phoneNumber || "",
-        bankType: data.bankType || "",
-        bankName: data.bankName || "",
-        description: data.description || "",
-      });
-    } catch (error) {
-      console.error("💥 Error fetching profile:", error);
-      setError(error instanceof Error ? error.message : "Có lỗi xảy ra");
-
-      if (error instanceof Error && error.message.includes("401")) {
-        localStorage.clear();
-        router.push("/user/login");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [router]); // ✅ Chỉ phụ thuộc vào router
-
-  // ✅ FIX 2: useEffect với dependency array đầy đủ
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-
-    console.log("🔍 DEBUG Profile Page:");
-    console.log("Token from localStorage:", storedToken);
-    console.log("User from localStorage:", storedUser);
-    console.log("AuthContext user:", user);
-    console.log("AuthContext token:", token);
-
-    if (!storedToken) {
-      console.error("❌ No token - redirecting to login");
-      router.push("/user/login");
+    if (!mounted) return;
+    if (!token) {
+      router.replace(`/user/login?next=${encodeURIComponent("/user/profile")}`);
       return;
     }
 
-    fetchProfile();
-  }, [fetchProfile, router, user, token]); // ✅ Thêm đầy đủ dependencies
+    let active = true;
+    (async () => {
+      setLoading(true);
+      setMessage(null);
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me"), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = (await res.json().catch(() => null)) as
+          | CustomerProfile
+          | { message?: string }
+          | null;
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
+        if (!res.ok || !data || typeof (data as any) !== "object") {
+          const errorText =
+            (data as any)?.message ||
+            "Failed to load profile. Please log in again.";
+          throw new Error(errorText);
+        }
+
+        if (!active) return;
+        const customer = data as CustomerProfile;
+        setProfile(customer);
+        setForm({
+          username: customer.username ?? "",
+          email: customer.email ?? "",
+          phoneNumber: customer.phoneNumber ?? "",
+        });
+      } catch (err) {
+        console.error(err);
+        if (!active) return;
+        setMessage({
+          type: "error",
+          text: err instanceof Error ? err.message : "Failed to load profile.",
+        });
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [mounted, router, token]);
+
+  const gamerNumber = useMemo(() => {
+    if (!mounted) return hashToSixDigits("gamer");
+    const input =
+      profile?.id ?? user?.id ?? profile?.email ?? user?.email ?? "gamer";
+    return hashToSixDigits(String(input));
+  }, [mounted, profile?.email, profile?.id, user?.email, user?.id]);
+
+  const namePlaceholder = useMemo(() => {
+    if (!mounted) return `Gamer-#${gamerNumber}`;
+    const base = (form.username || user?.name || "Gamer").trim() || "Gamer";
+    return `${base}-#${gamerNumber}`;
+  }, [mounted, form.username, gamerNumber, user?.name]);
+
+  async function onSave() {
+    if (!token) return;
+    setSaving(true);
+    setMessage(null);
     try {
-      const storedToken = localStorage.getItem("token");
+      const payload = {
+        username: form.username.trim(),
+        phoneNumber: form.phoneNumber.trim(),
+      };
 
-      const response = await fetch("http://localhost:3000/customers/me", {
+      const res = await fetch(gameStoreApiUrl("/customers/me"), {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${storedToken}`,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
+      const data = (await res.json().catch(() => null)) as
+        | CustomerProfile
+        | { message?: string }
+        | null;
 
-      if (response.ok) {
-        const updated = await response.json();
-        setProfile(updated);
-        setIsEditing(false);
-        alert("✅ Cập nhật thông tin thành công!");
-      } else {
-        const errorText = await response.text();
-        console.error("Update error:", errorText);
-        alert("❌ Cập nhật thất bại!");
+      if (!res.ok) {
+        throw new Error((data as any)?.message || "Failed to save profile.");
       }
-    } catch (error) {
-      console.error("Error updating profile:", error);
-      alert("❌ Có lỗi xảy ra!");
+
+      const updated = (data ?? {}) as CustomerProfile;
+      setProfile(updated);
+      setForm((prev) => ({
+        ...prev,
+        username: updated.username ?? prev.username,
+        phoneNumber: updated.phoneNumber ?? prev.phoneNumber,
+      }));
+      login(updated as any, token);
+      setMessage({ type: "success", text: "Saved successfully." });
+    } catch (err) {
+      console.error(err);
+      setMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to save profile.",
+      });
+    } finally {
+      setSaving(false);
     }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl animate-pulse">Đang tải thông tin...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="text-xl text-red-400 mb-4">❌ {error}</div>
-          <button
-            onClick={fetchProfile}
-            className="bg-primary hover:bg-primary/90 text-black px-6 py-2 rounded-lg"
-          >
-            Thử lại
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl">Không tìm thấy thông tin người dùng</div>
-      </div>
-    );
   }
 
   return (
-    <main className="min-h-screen py-10">
-      <div className="max-w-4xl mx-auto px-4">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Thông tin tài khoản</h1>
-          <p className="text-light-200">Quản lý thông tin cá nhân của bạn</p>
-        </div>
+    <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
+      <div className="flex w-full flex-col gap-12 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
+        <TopBar />
 
-        <div className="bg-dark-100 border-dark-200 border rounded-lg p-6 mb-6">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h2 className="text-2xl font-bold mb-1">
-                {profile.fullName || profile.username || "User"}
-              </h2>
-              <p className="text-light-200">{profile.email}</p>
+        <div className="grid gap-10 lg:grid-cols-[360px_1fr]">
+          <aside className="overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-black/20 shadow-2xl backdrop-blur">
+            <div className="bg-white/10 px-6 py-6">
+              <p className="text-2xl font-semibold">My Account</p>
+              <p className="mt-1 text-sm text-white/60">Account Management</p>
             </div>
-            <span
-              className={`pill ${
-                profile.accountStatus === "Active"
-                  ? "bg-green-500/20 text-green-400"
-                  : "bg-red-500/20 text-red-400"
-              }`}
-            >
-              {profile.accountStatus}
-            </span>
-          </div>
 
-          {!isEditing ? (
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <InfoItem label="Username" value={profile.username} />
-                <InfoItem label="Email" value={profile.email} />
-                <InfoItem label="Số điện thoại" value={profile.phoneNumber} />
-                <InfoItem
-                  label="Số dư tài khoản"
-                  value={`${profile.accountBalance.toLocaleString()} VNĐ`}
-                />
-                <InfoItem
-                  label="Ngày đăng ký"
-                  value={new Date(profile.registrationDate).toLocaleDateString(
-                    "vi-VN"
-                  )}
-                />
-              </div>
-
-              <div className="space-y-4">
-                <InfoItem
-                  label="Loại ngân hàng"
-                  value={profile.bankType || "Chưa có"}
-                />
-                <InfoItem
-                  label="Tên ngân hàng"
-                  value={profile.bankName || "Chưa có"}
-                />
-                <InfoItem
-                  label="Mô tả"
-                  value={profile.description || "Chưa có"}
-                />
-                <InfoItem
-                  label="Cập nhật lần cuối"
-                  value={new Date(profile.updatedAt).toLocaleString("vi-VN")}
-                />
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleUpdate} className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <FormInput
-                  label="Username"
-                  value={formData.username}
-                  onChange={(e) =>
-                    setFormData({ ...formData, username: e.target.value })
-                  }
-                />
-                <FormInput
-                  label="Số điện thoại"
-                  value={formData.phoneNumber}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phoneNumber: e.target.value })
-                  }
-                />
-                <FormInput
-                  label="Loại ngân hàng"
-                  value={formData.bankType}
-                  onChange={(e) =>
-                    setFormData({ ...formData, bankType: e.target.value })
-                  }
-                />
-                <FormInput
-                  label="Tên ngân hàng"
-                  value={formData.bankName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, bankName: e.target.value })
-                  }
-                />
-              </div>
-              <FormTextarea
-                label="Mô tả"
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
+            <div className="divide-y divide-white/10">
+              <AccountSidebarItem
+                title="Personal Information"
+                subtitle="Modify Your Personal Information"
+                href="/user/profile"
+                active
               />
+              <AccountSidebarItem
+                title="My Orders"
+                subtitle="View Your Previous Orders"
+                href="/user/orders"
+              />
+              <AccountSidebarItem
+                title="Wishlist"
+                subtitle="View Games You Added in Wishlist"
+                href="/wishlist"
+              />
+              <AccountSidebarItem
+                title="Payment Methods"
+                subtitle="Adjust Your Payment Method"
+                href="/user/payment-methods"
+              />
+            </div>
+          </aside>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="submit"
-                  className="bg-primary hover:bg-primary/90 text-black px-6 py-2.5 rounded-lg font-semibold transition"
+          <main className="rounded-3xl border border-white/10 bg-[#1b1a55]/60 p-8 shadow-2xl backdrop-blur">
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <p className="text-2xl font-semibold">Your Name</p>
+                <Input
+                  name="username"
+                  value={form.username}
+                  onChange={(value) =>
+                    setForm((prev) => ({ ...prev, username: value }))
+                  }
+                  placeholder={namePlaceholder}
+                />
+              </div>
+
+              <div className="grid gap-8 md:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-xl font-semibold">Email Address</p>
+                  <Input
+                    name="email"
+                    value={form.email}
+                    readOnly
+                    placeholder="emailaddress@gmail.com"
+                  />
+                  <p className="text-xs text-cyan-300">Email Verified</p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-xl font-semibold">Mobile</p>
+                  <Input
+                    name="phoneNumber"
+                    value={form.phoneNumber}
+                    onChange={(value) =>
+                      setForm((prev) => ({ ...prev, phoneNumber: value }))
+                    }
+                    placeholder="+201000000000"
+                  />
+                  <p className="text-xs text-cyan-300">Number Verified</p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xl font-semibold">Password</p>
+                <Link
+                  href="/user/forgot"
+                  className="text-sm text-cyan-300 hover:underline"
                 >
-                  Lưu thay đổi
-                </button>
+                  Recover password
+                </Link>
+              </div>
+
+              {message ? (
+                <div
+                  className={`rounded-[12px] border px-4 py-3 text-sm ${
+                    message.type === "success"
+                      ? "border-green-500/40 bg-green-500/10 text-green-200"
+                      : "border-red-500/40 bg-red-500/10 text-red-200"
+                  }`}
+                >
+                  {message.text}
+                </div>
+              ) : null}
+
+              <div className="flex items-center gap-4">
                 <button
                   type="button"
-                  onClick={() => setIsEditing(false)}
-                  className="bg-dark-200 hover:bg-dark-200/80 px-6 py-2.5 rounded-lg transition"
+                  onClick={onSave}
+                  disabled={saving || loading}
+                  className="h-11 w-[110px] rounded-full bg-white text-sm font-semibold text-[#1b1a55] disabled:opacity-60"
                 >
-                  Hủy
+                  {saving ? "Saving…" : "Save"}
                 </button>
+
+                {loading ? (
+                  <span className="text-sm text-white/60">Loading…</span>
+                ) : null}
               </div>
-            </form>
-          )}
-
-          {!isEditing && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="bg-primary hover:bg-primary/90 text-black px-6 py-2.5 rounded-lg font-semibold transition mt-6"
-            >
-              Chỉnh sửa thông tin
-            </button>
-          )}
+            </div>
+          </main>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="bg-dark-100 border-dark-200 border rounded-lg p-6">
-            <h3 className="text-xl font-bold mb-4">Thống kê tài khoản</h3>
-            <div className="space-y-3">
-              <StatItem
-                label="Tổng số dư"
-                value={`${profile.accountBalance.toLocaleString()} VNĐ`}
-                icon="💰"
-              />
-              <StatItem
-                label="Trạng thái"
-                value={profile.accountStatus}
-                icon="✅"
-              />
-              <StatItem
-                label="Thời gian tham gia"
-                value={
-                  Math.floor(
-                    (new Date().getTime() -
-                      new Date(profile.registrationDate).getTime()) /
-                      (1000 * 60 * 60 * 24)
-                  ) + " ngày"
-                }
-                icon="📅"
-              />
+        <footer className="mt-6 space-y-6 border-t border-white/10 pt-8">
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-center gap-3">
+              <img src={logo} alt="GameVerse" className="h-10 w-10" />
+              <span className="text-xl font-semibold">GameVerse</span>
+            </div>
+            <div className="space-y-2 max-w-xl text-sm text-white/80">
+              GameVerse — Where every gamer levels up! From epic AAA adventures
+              to indie gems, grab the hottest deals on PC, Xbox, PlayStation &
+              Nintendo. Play more, pay less.
+            </div>
+            <div className="grid grid-cols-2 gap-10 text-sm">
+              <div className="space-y-2">
+                <p className="text-base font-semibold text-white">My Account</p>
+                <Link href="/user/account" className="block text-white/80">
+                  My Account
+                </Link>
+                <Link href="/user/orders" className="block text-white/80">
+                  My Orders
+                </Link>
+              </div>
+              <div className="space-y-2">
+                <p className="text-base font-semibold text-white">Support</p>
+                <Link href="/terms" className="block text-white/80">
+                  Terms and conditions
+                </Link>
+                <Link href="/privacy" className="block text-white/80">
+                  Privacy and cookie policy
+                </Link>
+                <Link href="/refunds" className="block text-white/80">
+                  Refund policy
+                </Link>
+              </div>
             </div>
           </div>
-
-          <div className="bg-dark-100 border-dark-200 border rounded-lg p-6">
-            <h3 className="text-xl font-bold mb-4">Thông tin ngân hàng</h3>
-            <div className="space-y-3">
-              <StatItem
-                label="Loại"
-                value={profile.bankType || "Chưa cập nhật"}
-                icon="🏦"
-              />
-              <StatItem
-                label="Ngân hàng"
-                value={profile.bankName || "Chưa cập nhật"}
-                icon="💳"
-              />
-              <StatItem
-                label="Số điện thoại"
-                value={profile.phoneNumber}
-                icon="📱"
-              />
+          <div className="flex items-center justify-between border-t border-white/10 pt-4">
+            <p className="text-sm text-white/70">
+              Copyright GameVerse.com 2025, all rights reserved
+            </p>
+            <div className="flex items-center gap-3">
+              {socials.map((icon) => (
+                <img
+                  key={icon}
+                  src={icon}
+                  alt="social"
+                  className="h-8 w-8"
+                  loading="lazy"
+                />
+              ))}
             </div>
           </div>
-        </div>
-      </div>
-    </main>
-  );
-}
-
-function InfoItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-light-200 text-sm mb-1">{label}</p>
-      <p className="text-white font-medium">{value}</p>
-    </div>
-  );
-}
-
-function FormInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-}) {
-  return (
-    <div>
-      <label className="text-light-200 text-sm mb-2 block">{label}</label>
-      <input
-        type="text"
-        value={value}
-        onChange={onChange}
-        className="w-full bg-dark-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary"
-      />
-    </div>
-  );
-}
-
-function FormTextarea({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-}) {
-  return (
-    <div>
-      <label className="text-light-200 text-sm mb-2 block">{label}</label>
-      <textarea
-        value={value}
-        onChange={onChange}
-        rows={3}
-        className="w-full bg-dark-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary"
-      />
-    </div>
-  );
-}
-
-function StatItem({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon: string;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-2xl">{icon}</span>
-      <div>
-        <p className="text-light-200 text-sm">{label}</p>
-        <p className="text-white font-medium">{value}</p>
+        </footer>
       </div>
     </div>
   );

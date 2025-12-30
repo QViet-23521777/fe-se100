@@ -1,6 +1,7 @@
 // components/GameList.tsx
 "use client";
 import { useEffect, useState } from "react";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
 
 interface Game {
   id: string;
@@ -25,9 +26,7 @@ export const GameList = ({ onSale = false }: { onSale?: boolean }) => {
     const fetchGames = async () => {
       try {
         setLoading(true);
-        const url = onSale
-          ? "http://localhost:3000/games?onSale=true"
-          : "http://localhost:3000/games";
+        const url = gameStoreApiUrl(onSale ? "/games?onSale=true" : "/games");
 
         const response = await fetch(url);
 

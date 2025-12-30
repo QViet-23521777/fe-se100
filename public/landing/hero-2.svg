@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0f2a"/>
+      <stop offset="0.6" stop-color="#061029"/>
+      <stop offset="1" stop-color="#040717"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1180 270) rotate(90) scale(560)">
+      <stop offset="0" stop-color="#f59e0b" stop-opacity="0.50"/>
+      <stop offset="0.6" stop-color="#f59e0b" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(420 560) rotate(90) scale(620)">
+      <stop offset="0" stop-color="#22c55e" stop-opacity="0.28"/>
+      <stop offset="0.65" stop-color="#22c55e" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#22c55e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="noise" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#glowA)"/>
+  <rect width="1600" height="900" fill="url(#glowB)"/>
+
+  <g opacity="0.18">
+    <path d="M0 160H1600" stroke="#ffffff" stroke-opacity="0.12"/>
+    <path d="M0 320H1600" stroke="#ffffff" stroke-opacity="0.08"/>
+    <path d="M0 480H1600" stroke="#ffffff" stroke-opacity="0.06"/>
+    <path d="M0 640H1600" stroke="#ffffff" stroke-opacity="0.05"/>
+    <path d="M0 800H1600" stroke="#ffffff" stroke-opacity="0.04"/>
+  </g>
+
+  <g opacity="0.20">
+    <path d="M300 0V900" stroke="#ffffff" stroke-opacity="0.05"/>
+    <path d="M640 0V900" stroke="#ffffff" stroke-opacity="0.05"/>
+    <path d="M980 0V900" stroke="#ffffff" stroke-opacity="0.05"/>
+    <path d="M1320 0V900" stroke="#ffffff" stroke-opacity="0.05"/>
+  </g>
+
+  <rect x="-80" y="620" width="820" height="160" rx="80" fill="url(#noise)" opacity="0.7"/>
+  <rect x="560" y="140" width="1120" height="130" rx="65" fill="url(#noise)" opacity="0.55"/>
+</svg>
+

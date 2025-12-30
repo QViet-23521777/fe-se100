@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useAuth } from "@/app/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 
 export default function NavBar() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -17,6 +18,8 @@ export default function NavBar() {
   }, []);
 
   useEffect(() => {
+    if (pathname === "/") return;
+
     const handleClickOutside = (event: MouseEvent) => {
       if (
         dropdownRef.current &&
@@ -28,7 +31,7 @@ export default function NavBar() {
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [pathname]);
 
   const isPublisher = user?.accountType === "publisher";
   const isCustomer = user?.accountType === "customer";
@@ -63,6 +66,14 @@ export default function NavBar() {
       router.push("/user/profile");
     }
   };
+
+  if (
+    pathname === "/" ||
+    pathname === "/browse" ||
+    pathname.startsWith("/user/login")
+  ) {
+    return null;
+  }
 
   return (
     <nav className="w-full flex items-center justify-between px-6 py-4 bg-gray-900 text-white shadow glass sticky top-0 z-50">

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
 
 export default function PublisherRegisterPage() {
   const router = useRouter();
@@ -110,7 +111,7 @@ export default function PublisherRegisterPage() {
     console.log("📤 Publisher Register Data:", data);
 
     try {
-      const res = await fetch("http://localhost:3000/auth/publisher/register", {
+      const res = await fetch(gameStoreApiUrl("/auth/publisher/register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
