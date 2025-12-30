@@ -34,9 +34,10 @@ export default function PublisherGamesPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!isClient) return;
 
     if (!user || !token) {
       router.push("/publisher/login");
@@ -245,7 +246,8 @@ function GameCard({
   const discountPercent =
     hasDiscount && game.originalPrice > 0
       ? Math.round(
-          ((game.originalPrice - game.discountPrice!) / game.originalPrice) * 100
+          ((game.originalPrice - game.discountPrice!) / game.originalPrice) *
+            100
         )
       : 0;
 
