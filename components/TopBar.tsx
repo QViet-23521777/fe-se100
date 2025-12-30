@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TopBarSearch } from "@/components/TopBarSearch";
 import { useStore } from "@/app/context/StoreContext";
 import { useAuth } from "@/app/context/AuthContext";
 
 type Props = {
-  active?: "home" | "browse" | "news" | "about";
+  active?: "home" | "browse" | "publisher" | "about";
 };
 
 const logo = "/assets/figma-logo.svg";
@@ -85,39 +85,45 @@ export function TopBar({ active = "home" }: Props) {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+  // State để lưu các href được tính toán từ client
+  const [loginHref, setLoginHref] = useState("/user/login");
+  const [registerHref, setRegisterHref] = useState("/user/register");
+  const [accountHref, setAccountHref] = useState("/user/account");
+  const [uploadGamesHref, setUploadGamesHref] = useState("/publisher/login");
 
-  const currentPath = useMemo(() => {
-    if (!mounted) return pathname;
-    try {
-      return `${window.location.pathname}${window.location.search}`;
-    } catch {
-      return pathname;
+  useEffect(() => {
+    setMounted(true);
+
+    // Tính toán currentPath từ window (chỉ chạy trên client)
+    const currentPath = `${window.location.pathname}${window.location.search}`;
+
+    // Cập nhật các href với currentPath thực
+    setLoginHref(`/user/login?next=${encodeURIComponent(currentPath)}`);
+    setRegisterHref(`/user/register?next=${encodeURIComponent(currentPath)}`);
+
+    // Account href
+    if (user && token) {
+      setAccountHref("/user/account");
+    } else {
+      setAccountHref(`/user/login?next=${encodeURIComponent("/user/account")}`);
     }
-  }, [mounted, pathname]);
 
-  const loginHref = useMemo(
-    () => `/user/login?next=${encodeURIComponent(currentPath)}`,
-    [currentPath]
-  );
-  const registerHref = useMemo(
-    () => `/user/register?next=${encodeURIComponent(currentPath)}`,
-    [currentPath]
-  );
-  const accountHref = useMemo(
-    () =>
-      mounted && user && token
-        ? "/user/account"
-        : `/user/login?next=${encodeURIComponent("/user/account")}`,
-    [mounted, token, user]
-  );
+    // Upload games href
+    if (user?.accountType === "publisher" && token && user.id) {
+      setUploadGamesHref(`/publisher/game/${user.id}`);
+    } else {
+      setUploadGamesHref(
+        `/publisher/login?next=${encodeURIComponent("/publisher/game/create")}`
+      );
+    }
+  }, [pathname, user, token]);
 
   const showAuthed = mounted && Boolean(user) && Boolean(token);
 
   const links: { href: string; label: string; key: Props["active"] }[] = [
     { href: "/", label: "Home", key: "home" },
     { href: "/browse", label: "Browse", key: "browse" },
-    { href: "/news", label: "News", key: "news" },
+    { href: uploadGamesHref, label: "Upload games", key: "publisher" },
     { href: "/about", label: "About", key: "about" },
   ];
 
@@ -134,7 +140,9 @@ export function TopBar({ active = "home" }: Props) {
               key={link.href}
               href={link.href}
               className={`transition-colors ${
-                active === link.key ? "font-semibold text-white" : "text-white/75"
+                active === link.key
+                  ? "font-semibold text-white"
+                  : "text-white/75"
               }`}
             >
               {link.label}
@@ -192,3 +200,5 @@ export function TopBar({ active = "home" }: Props) {
     </div>
   );
 }
+
+export default TopBar;
