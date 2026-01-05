@@ -184,7 +184,7 @@ export function TopBar({ active = "home" }: Props) {
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-3">
-        <TopBarSearch className="hidden flex-1 max-w-md sm:block" />
+        <TopBarSearch className="hidden flex-1 max-w-md sm:block" showAppId={false} />
 
         {showAuthed ? null : (
           <>

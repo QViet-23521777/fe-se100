@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 
 type Suggestion = {
-  steamAppId: number;
+  steamAppId?: number | null;
+  id?: string | null;
   name: string;
   avatarUrl?: string;
   isFree?: boolean;
@@ -16,9 +17,11 @@ type Suggestion = {
 export function TopBarSearch({
   className = "",
   limit = 8,
+  showAppId = true,
 }: {
   className?: string;
   limit?: number;
+  showAppId?: boolean;
 }) {
   const router = useRouter();
 
@@ -112,7 +115,9 @@ export function TopBarSearch({
     setQuery("");
     setItems([]);
     setActiveIndex(-1);
-    router.push(`/product/${item.steamAppId}`);
+    const target = item.steamAppId ?? item.id;
+    if (!target) return;
+    router.push(`/product/${target}`);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -184,7 +189,7 @@ export function TopBarSearch({
           ) : (
             <ul className="max-h-[360px] overflow-y-auto py-2">
               {items.map((item, idx) => (
-                <li key={item.steamAppId}>
+                <li key={`${item.steamAppId ?? item.id ?? "na"}-${idx}`}>
                   <button
                     type="button"
                     onMouseDown={(e) => {
@@ -208,15 +213,17 @@ export function TopBarSearch({
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-xs text-white/40">
-                          {String(item.steamAppId)}
+                          {String(item.steamAppId ?? item.id ?? "")}
                         </div>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{item.name}</p>
-                      <p className="text-xs text-white/55">
-                        AppID {item.steamAppId}
-                      </p>
+                      {showAppId ? (
+                        <p className="text-xs text-white/55">
+                          AppID {item.steamAppId ?? item.id}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="shrink-0 text-right">
                       {item.discountPercent && item.discountPercent > 0 ? (

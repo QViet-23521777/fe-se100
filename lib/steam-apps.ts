@@ -59,7 +59,16 @@ export async function fetchSteamAppById(id: string): Promise<SteamApp | null> {
       cache: "no-store",
     });
     if (!res.ok) return null;
-    return (await res.json()) as SteamApp;
+    const data = (await res.json()) as any;
+
+    // Normalize common field names from the game-store API so callers
+    // (product page, search) can rely on `avatarUrl` and `detailsUrl`.
+    if (data) {
+      if (!data.avatarUrl && data.imageUrl) data.avatarUrl = data.imageUrl;
+      if (!data.imageUrl && data.avatarUrl) data.imageUrl = data.avatarUrl;
+    }
+
+    return data as SteamApp;
   } catch {
     return null;
   }

@@ -66,11 +66,21 @@ export async function GET(req: Request) {
     : 8;
 
   const results = await fetchSteamApps({ search: query, limit });
-  const prices = await fetchSteamPrices(results.map((app) => app.steamAppId));
+
+  // Normalize IDs and images: the game-store API may use `id` and `imageUrl`.
+  const steamIds = results.map((app) => {
+    const maybeId = (app as any).steamAppId ?? (app as any).id;
+    const parsed = Number(maybeId);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  });
+
+  const prices = await fetchSteamPrices(steamIds.filter((n) => Number.isFinite(n)) as number[]);
 
   return NextResponse.json(
     results.map((app) => {
-      const details = prices.get(app.steamAppId);
+      const rawId = (app as any).steamAppId ?? (app as any).id;
+      const steamAppId = Number(rawId) && String(rawId).trim() ? Number(rawId) : null;
+      const details = steamAppId ? prices.get(steamAppId) : undefined;
       const isFree = Boolean(details?.is_free);
       const discountPercent = details?.price_overview?.discount_percent ?? null;
 
@@ -88,9 +98,10 @@ export async function GET(req: Request) {
           : null;
 
       return {
-        steamAppId: app.steamAppId,
+        steamAppId,
+        id: (app as any).id ?? (app as any).slug ?? null,
         name: app.name,
-        avatarUrl: app.avatarUrl,
+        avatarUrl: (app as any).imageUrl ?? (app as any).avatarUrl ?? null,
         isFree,
         price,
         originalPrice,
