@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { gameStoreApiUrl } from "@/lib/game-store-api";
+import { fetchSteamApps } from "@/lib/steam-apps";
+import { fetchSteamAppDetailsBatch } from "@/lib/steam-store";
 
 type SearchItem = {
   type: "steam" | "game";
@@ -9,12 +11,19 @@ type SearchItem = {
   avatarUrl?: string | null;
   price?: string | null;
   originalPrice?: string | null;
+  discountPercent?: number | null;
+  publisherName?: string | null;
 };
 
 async function fetchJson(url: string) {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json().catch(() => null);
+}
+
+function formatUsdCents(value?: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return `$${(value / 100).toFixed(2)}`;
 }
 
 export async function GET(req: Request) {
@@ -24,22 +33,43 @@ export async function GET(req: Request) {
 
   if (!q || q.length < 1) return NextResponse.json([]);
 
-  const [steamData, gameData] = await Promise.all([
-    fetchJson(gameStoreApiUrl(`/steam-apps?search=${encodeURIComponent(q)}&limit=${limit}`)),
+  const [steamApps, gameData] = await Promise.all([
+    fetchSteamApps({ search: q, limit }),
     fetchJson(gameStoreApiUrl(`/games?search=${encodeURIComponent(q)}&limit=${limit}`)),
   ]);
 
-  const steamItems: SearchItem[] = Array.isArray(steamData)
-    ? steamData.slice(0, limit).map((item: any) => ({
-        type: "steam" as const,
-        id: String(item.steamAppId),
-        steamAppId: item.steamAppId,
-        name: item.name,
-        avatarUrl: item.avatarUrl,
-        price: item.price ?? null,
-        originalPrice: item.originalPrice ?? null,
-      }))
-    : [];
+  const steamDetails = await fetchSteamAppDetailsBatch(
+    steamApps.map((app) => app.steamAppId),
+    { filters: ["price_overview", "is_free", "steam_appid"], revalidateSeconds: 60 * 15 }
+  );
+
+  const steamItems: SearchItem[] = steamApps.slice(0, limit).map((app) => {
+    const store = steamDetails.get(app.steamAppId);
+    const isFree = Boolean(store?.is_free);
+    const discountPercent = store?.price_overview?.discount_percent ?? null;
+    const price =
+      (isFree
+        ? "Free"
+        : store?.price_overview?.final_formatted ||
+          formatUsdCents(store?.price_overview?.final)) ?? null;
+    const originalPrice =
+      discountPercent && discountPercent > 0
+        ? store?.price_overview?.initial_formatted ||
+          formatUsdCents(store?.price_overview?.initial)
+        : null;
+
+    return {
+      type: "steam" as const,
+      id: String(app.steamAppId),
+      steamAppId: app.steamAppId,
+      name: app.name,
+      avatarUrl: app.avatarUrl,
+      price,
+      originalPrice,
+      discountPercent,
+      publisherName: null,
+    };
+  });
 
   const gameItems: SearchItem[] = Array.isArray(gameData)
     ? gameData.slice(0, limit).map((g: any) => {
@@ -54,6 +84,11 @@ export async function GET(req: Request) {
           avatarUrl: g.imageUrl,
           price,
           originalPrice,
+          publisherName:
+            g.publisherName ??
+            g.publisher?.name ??
+            g.publisher?.publisherName ??
+            null,
         };
       })
     : [];
