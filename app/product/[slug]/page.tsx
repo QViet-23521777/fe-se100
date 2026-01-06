@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { fetchSteamAppById, fetchSteamApps } from "@/lib/steam-apps";
 import { ProductActions } from "@/components/StoreActions";
+import { ScreenshotGallery } from "@/components/ScreenshotGallery";
 
 const staticProduct = {
   slug: "black-myth-wukong",
@@ -187,6 +188,11 @@ export default async function ProductPage({
   }
 
   if (!isSteamId) {
+    const staticShots = staticProduct.gallery.map((src, idx) => ({
+      id: `static-${idx}`,
+      thumbnail: src,
+      full: src,
+    }));
     const min = staticProduct.requirements.minimum;
     const rec = staticProduct.requirements.recommended;
 
@@ -262,17 +268,7 @@ export default async function ProductPage({
 
           <section className="space-y-3">
             <h2 className="text-2xl font-semibold">Screenshots</h2>
-            <div className="flex items-center gap-3 overflow-x-auto pb-2">
-              {staticProduct.gallery.map((src) => (
-                <img
-                  key={src}
-                  src={src}
-                  alt="Screenshot"
-                  className="h-24 w-[115px] rounded-lg object-cover opacity-80 hover:opacity-100 transition"
-                  loading="lazy"
-                />
-              ))}
-            </div>
+            <ScreenshotGallery items={staticShots} />
           </section>
         </div>
       </div>
@@ -326,6 +322,11 @@ export default async function ProductPage({
       : undefined;
 
   const shots = details?.screenshots?.slice(0, 8) ?? [];
+  const shotItems = shots.map((shot) => ({
+    id: shot.id,
+    thumbnail: shot.path_thumbnail || shot.path_full,
+    full: shot.path_full,
+  }));
 
   const reqs = details?.pc_requirements;
   const minimum =
@@ -433,21 +434,7 @@ export default async function ProductPage({
 
         <section className="space-y-3">
           <h2 className="text-2xl font-semibold">Screenshots</h2>
-          {shots.length === 0 ? (
-            <p className="text-sm text-white/70">No screenshots available.</p>
-          ) : (
-            <div className="flex items-center gap-3 overflow-x-auto pb-2">
-              {shots.map((shot) => (
-                <img
-                  key={shot.id}
-                  src={shot.path_full}
-                  alt="Screenshot"
-                  className="h-24 w-[140px] rounded-lg object-cover opacity-80 hover:opacity-100 transition"
-                  loading="lazy"
-                />
-              ))}
-            </div>
-          )}
+          <ScreenshotGallery items={shotItems} />
         </section>
 
         <section className="space-y-4">
