@@ -8,7 +8,7 @@ import { useStore } from "@/app/context/StoreContext";
 import { useAuth } from "@/app/context/AuthContext";
 
 type Props = {
-  active?: "home" | "browse" | "news" | "about";
+  active?: "home" | "browse" | "publisher" | "about";
 };
 
 const logo = "/assets/figma-logo.svg";
@@ -88,7 +88,11 @@ export function TopBar({ active = "home" }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => setMounted(true), []);
+  // State để lưu các href được tính toán từ client
+  const [loginHref, setLoginHref] = useState("/user/login");
+  const [registerHref, setRegisterHref] = useState("/user/register");
+  const [accountHref, setAccountHref] = useState("/user/account");
+  const [uploadGamesHref, setUploadGamesHref] = useState("/publisher/login");
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -108,7 +112,6 @@ export function TopBar({ active = "home" }: Props) {
     } catch {
       return pathname;
     }
-  }, [mounted, pathname]);
 
   const loginHref = useMemo(
     () => `/user/login?next=${encodeURIComponent(currentPath)}`,
@@ -135,7 +138,7 @@ export function TopBar({ active = "home" }: Props) {
   const links: { href: string; label: string; key: Props["active"] }[] = [
     { href: "/", label: "Home", key: "home" },
     { href: "/browse", label: "Browse", key: "browse" },
-    { href: "/news", label: "News", key: "news" },
+    { href: uploadGamesHref, label: "Upload games", key: "publisher" },
     { href: "/about", label: "About", key: "about" },
   ];
 
@@ -176,7 +179,9 @@ export function TopBar({ active = "home" }: Props) {
               key={link.href}
               href={link.href}
               className={`transition-colors ${
-                active === link.key ? "font-semibold text-white" : "text-white/75"
+                active === link.key
+                  ? "font-semibold text-white"
+                  : "text-white/75"
               }`}
             >
               {link.label}
@@ -234,3 +239,5 @@ export function TopBar({ active = "home" }: Props) {
     </div>
   );
 }
+
+export default TopBar;

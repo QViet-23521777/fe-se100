@@ -55,7 +55,11 @@ function AccountSidebarItem({
       {active ? (
         <span className="absolute left-0 top-0 h-full w-2 bg-white/20" />
       ) : null}
-      <p className={`text-lg font-semibold ${active ? "text-white/60" : "text-white"}`}>
+      <p
+        className={`text-lg font-semibold ${
+          active ? "text-white/60" : "text-white"
+        }`}
+      >
         {title}
       </p>
       <p className="mt-1 text-sm text-white/55">{subtitle}</p>
@@ -99,7 +103,11 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
-  const [form, setForm] = useState({ username: "", email: "", phoneNumber: "" });
+  const [form, setForm] = useState({
+    username: "",
+    email: "",
+    phoneNumber: "",
+  });
 
   useEffect(() => setMounted(true), []);
 
@@ -144,7 +152,8 @@ export default function ProfilePage() {
 
         if (!res.ok || !data || typeof (data as any) !== "object") {
           const errorText =
-            (data as any)?.message || "Failed to load profile. Please log in again.";
+            (data as any)?.message ||
+            "Failed to load profile. Please log in again.";
           throw new Error(errorText);
         }
 
@@ -175,7 +184,8 @@ export default function ProfilePage() {
 
   const gamerNumber = useMemo(() => {
     if (!mounted) return hashToSixDigits("gamer");
-    const input = profile?.id ?? user?.id ?? profile?.email ?? user?.email ?? "gamer";
+    const input =
+      profile?.id ?? user?.id ?? profile?.email ?? user?.email ?? "gamer";
     return hashToSixDigits(String(input));
   }, [mounted, profile?.email, profile?.id, user?.email, user?.id]);
 
@@ -306,7 +316,9 @@ export default function ProfilePage() {
                 <Input
                   name="username"
                   value={form.username}
-                  onChange={(value) => setForm((prev) => ({ ...prev, username: value }))}
+                  onChange={(value) =>
+                    setForm((prev) => ({ ...prev, username: value }))
+                  }
                   placeholder={namePlaceholder}
                 />
               </div>
@@ -339,7 +351,10 @@ export default function ProfilePage() {
 
               <div className="space-y-1">
                 <p className="text-xl font-semibold">Password</p>
-                <Link href="/user/forgot" className="text-sm text-cyan-300 hover:underline">
+                <Link
+                  href="/user/forgot"
+                  className="text-sm text-cyan-300 hover:underline"
+                >
                   Recover password
                 </Link>
               </div>
