@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 import { TopBar } from "@/components/TopBar";
 import { AddToCartPillButton, WishlistIconButton } from "@/components/StoreActions";
@@ -59,11 +60,12 @@ function Card({ card }: { card: BrowseCard }) {
       href={href}
       className="group relative flex h-[320px] flex-col overflow-hidden rounded-2xl bg-gradient-to-t from-black/70 via-black/30 to-transparent shadow-lg"
     >
-      <img
+      <Image
         src={card.image}
         alt={card.title}
-        className="absolute inset-0 h-full w-full object-cover"
-        loading="lazy"
+        fill
+        sizes="(min-width: 1280px) 240px, (min-width: 1024px) 220px, (min-width: 640px) 45vw, 100vw"
+        className="object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-[#070f2b] via-[#070f2b]/35 to-transparent" />
 

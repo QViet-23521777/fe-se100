@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { fetchSteamAppById, fetchSteamApps } from "@/lib/steam-apps";
@@ -203,12 +204,14 @@ export default async function ProductPage({
 
           <section className="grid gap-10 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="space-y-4">
-              <div className="rounded-[20px] overflow-hidden shadow-2xl">
-                <img
+              <div className="relative h-[420px] overflow-hidden rounded-[20px] shadow-2xl">
+                <Image
                   src={staticProduct.cover}
                   alt={staticProduct.title}
-                  className="w-full h-[420px] object-cover"
-                  loading="lazy"
+                  fill
+                  priority
+                  sizes="(min-width: 1024px) 520px, 100vw"
+                  className="object-cover"
                 />
               </div>
               <div className="flex items-center gap-3">
@@ -340,21 +343,24 @@ export default async function ProductPage({
         <TopBar />
 
         <section className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[#0c143d]/70 shadow-2xl">
-          <img
+          <Image
             src={hero}
             alt=""
-            className="absolute inset-0 h-full w-full object-cover opacity-45"
-            loading="lazy"
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover opacity-45"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#070f2b]/20 via-[#070f2b]/70 to-[#070f2b]" />
           <div className="relative grid gap-10 px-6 py-8 lg:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:py-10">
             <div className="space-y-4">
-              <div className="overflow-hidden rounded-[20px] border border-white/10 shadow-2xl">
-                <img
+              <div className="relative h-[420px] overflow-hidden rounded-[20px] border border-white/10 shadow-2xl">
+                <Image
                   src={cover}
                   alt={title}
-                  className="h-[420px] w-full object-cover"
-                  loading="lazy"
+                  fill
+                  sizes="(min-width: 1024px) 520px, 100vw"
+                  className="object-cover"
                 />
               </div>
               <div className="flex flex-wrap items-center gap-3 text-sm text-white/70">

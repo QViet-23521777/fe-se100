@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -197,7 +197,7 @@ export default function PublisherDashboardPage() {
                   >
                     <span className="text-sm font-semibold">{g.name}</span>
                     <span className="text-xs text-white/60">
-                      {g.genre || "—"} · v{g.version || "1.0"}
+                      {g.genre || "â€”"} Â· v{g.version || "1.0"}
                     </span>
                   </button>
                 ))}
@@ -217,11 +217,11 @@ export default function PublisherDashboardPage() {
                   <div>
                     <h1 className="text-2xl font-semibold">{selectedGame.name}</h1>
                     <p className="text-white/60">
-                      {selectedGame.genre || "—"} · v{selectedGame.version || "1.0"}
+                      {selectedGame.genre || "â€”"} Â· v{selectedGame.version || "1.0"}
                     </p>
                   </div>
                   <button
-                    onClick={() => router.push("/publisher/game/create")}
+                    onClick={() => router.push("/user/manage-games")}
                     className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#1b1a55]"
                   >
                     + New Game
@@ -294,7 +294,7 @@ export default function PublisherDashboardPage() {
                 <section className="rounded-2xl border border-white/10 bg-[#0c143d]/60 p-4">
                   <div className="flex items-center justify-between">
                     <h2 className="text-lg font-semibold">Stats</h2>
-                    {statsLoading ? <span className="text-xs text-white/70">Refreshing…</span> : null}
+                    {statsLoading ? <span className="text-xs text-white/70">Refreshingâ€¦</span> : null}
                   </div>
                   {stats ? (
                     <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -334,4 +334,6 @@ export default function PublisherDashboardPage() {
     </div>
   );
 }
+
+
 

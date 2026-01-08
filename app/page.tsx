@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { TopBar } from "@/components/TopBar";
 import {
   AddToCartPillButton,
@@ -12,6 +13,8 @@ import {
   fetchSteamAppDetailsBatch,
   type SteamAppStoreDetails,
 } from "@/lib/steam-store";
+
+export const revalidate = 300;
 
 type GameItem = {
   steamAppId?: number;
@@ -610,6 +613,9 @@ function GameCard({
 }) {
   const href = item.steamAppId ? `/product/${item.steamAppId}` : "/browse";
   const height = compact ? "h-[180px]" : "h-[220px]";
+  const imageSizes = compact
+    ? "(min-width: 1024px) 260px, (min-width: 640px) 45vw, 100vw"
+    : "(min-width: 1024px) 320px, (min-width: 640px) 45vw, 100vw";
   const storeItem = {
     steamAppId: item.steamAppId,
     name: item.title,
@@ -623,11 +629,12 @@ function GameCard({
       href={href}
       className={`group relative overflow-hidden rounded-3xl border border-white/10 bg-[#0c1430] shadow-lg ${height}`}
     >
-      <img
+      <Image
         src={item.image}
         alt={item.title}
-        className="absolute inset-0 h-full w-full object-cover opacity-90 transition duration-300 group-hover:scale-[1.02]"
-        loading="lazy"
+        fill
+        sizes={imageSizes}
+        className="object-cover opacity-90 transition duration-300 group-hover:scale-[1.02]"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-[#070f2b] via-[#070f2b]/35 to-transparent" />
       <div className="relative flex h-full flex-col justify-end gap-4 p-5">
@@ -761,11 +768,13 @@ function Hero({ featured }: { featured: GameItem }) {
   };
   return (
     <section className="relative overflow-hidden rounded-[28px] bg-[#0c143d] shadow-2xl">
-      <img
+      <Image
         src={featured.image}
         alt={featured.title}
-        className="absolute inset-0 h-full w-full object-cover"
-        loading="lazy"
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-b from-[#070f2b]/50 via-[#070f2b]/20 to-[#070f2b]" />
       <div className="relative flex flex-col gap-10 px-5 py-8 sm:px-8 lg:px-12">
@@ -828,6 +837,7 @@ export default async function Home() {
   const maxSkipGuess = Number.isFinite(maxSkipGuessRaw) ? maxSkipGuessRaw : 85000;
   const perRow = 10;
   const desiredTotal = 1 + perRow * 4;
+  const listRevalidateSeconds = 60 * 5;
 
   const apiAppPool: SteamApp[] = [];
   const seenApiIds = new Set<number>();
@@ -837,7 +847,11 @@ export default async function Home() {
   const batchSize = 18;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const apps = await fetchRandomSteamApps({ limit: batchSize, maxSkipGuess });
+    const apps = await fetchRandomSteamApps({
+      limit: batchSize,
+      maxSkipGuess,
+      revalidateSeconds: listRevalidateSeconds,
+    });
     const fresh = apps.filter((app) => {
       if (seenApiIds.has(app.steamAppId)) return false;
       seenApiIds.add(app.steamAppId);

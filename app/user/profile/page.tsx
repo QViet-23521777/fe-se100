@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -92,7 +92,7 @@ function Input({
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, token, login } = useAuth();
+  const { user, token, login, logout } = useAuth();
 
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -190,14 +190,14 @@ export default function ProfilePage() {
       return [
         { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
         { title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/admin/accounts" },
-        { title: "Manage Games", subtitle: "Create or edit games", href: "/publisher/game/create" },
+        { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
         { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/admin/promotions" },
       ];
     }
     if (user?.accountType === "publisher") {
       return [
         { title: "Personal Information", subtitle: "Modify Your Personal Information", href: "/user/profile" },
-        { title: "Manage Games", subtitle: "Create or edit games", href: "/publisher/game/create" },
+        { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
       ];
     }
     return [
@@ -285,6 +285,18 @@ export default function ProfilePage() {
                 />
               ))}
             </div>
+            <div className="px-6 py-6">
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  router.push("/");
+                }}
+                className="w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Log out
+              </button>
+            </div>
           </aside>
 
           <main className="rounded-3xl border border-white/10 bg-[#1b1a55]/60 p-8 shadow-2xl backdrop-blur">
@@ -351,10 +363,10 @@ export default function ProfilePage() {
                   disabled={saving || loading}
                   className="h-11 w-[110px] rounded-full bg-white text-sm font-semibold text-[#1b1a55] disabled:opacity-60"
                 >
-                  {saving ? "Saving…" : "Save"}
+                  {saving ? "Savingâ€¦" : "Save"}
                 </button>
 
-                {loading ? <span className="text-sm text-white/60">Loading…</span> : null}
+                {loading ? <span className="text-sm text-white/60">Loadingâ€¦</span> : null}
               </div>
             </div>
           </main>
@@ -367,7 +379,7 @@ export default function ProfilePage() {
               <span className="text-xl font-semibold">GameVerse</span>
             </div>
             <div className="space-y-2 max-w-xl text-sm text-white/80">
-              GameVerse — Where every gamer levels up! From epic AAA adventures to indie
+              GameVerse â€” Where every gamer levels up! From epic AAA adventures to indie
               gems, grab the hottest deals on PC, Xbox, PlayStation & Nintendo. Play
               more, pay less.
             </div>
@@ -416,4 +428,6 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+
 

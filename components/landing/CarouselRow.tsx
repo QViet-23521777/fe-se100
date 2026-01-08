@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRef } from "react";
 import { AddToCartPillButton, WishlistIconButton } from "@/components/StoreActions";
 
@@ -158,11 +159,12 @@ export default function CarouselRow({
                 className="group w-[280px] shrink-0 snap-start overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:w-[320px]"
               >
                 <div className="relative aspect-[16/9] overflow-hidden rounded-2xl">
-                  <img
+                  <Image
                     src={item.imageSrc}
                     alt={item.title}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
+                    fill
+                    sizes="(min-width: 1024px) 320px, (min-width: 640px) 70vw, 90vw"
+                    className="object-cover"
                   />
 
                   <WishlistIconButton

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -189,7 +189,7 @@ export default function AccountOptionsPage() {
           key: "games",
           title: "Manage Games",
           subtitle: "Create or edit games",
-          href: "/publisher/game/create",
+          href: "/user/manage-games",
           icon: (props) => <CartIcon {...props} />,
         },
         {
@@ -215,14 +215,7 @@ export default function AccountOptionsPage() {
           key: "games",
           title: "Manage Games",
           subtitle: "Create or edit games",
-          href: "/publisher/game/create",
-          icon: (props) => <CartIcon {...props} />,
-        },
-        {
-          key: "orders",
-          title: "Orders",
-          subtitle: "View orders for your games",
-          href: "/user/orders",
+          href: "/user/manage-games",
           icon: (props) => <CartIcon {...props} />,
         },
       ];
@@ -266,7 +259,7 @@ export default function AccountOptionsPage() {
         <div className="flex w-full flex-col gap-12 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
           <TopBar />
           <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/70 shadow-xl">
-            Loading account…
+            Loading accountâ€¦
           </div>
         </div>
       </div>
@@ -336,7 +329,7 @@ export default function AccountOptionsPage() {
               <span className="text-xl font-semibold">GameVerse</span>
             </div>
             <div className="space-y-2 max-w-xl text-sm text-white/80">
-              GameVerse — Where every gamer levels up! From epic AAA adventures to indie
+              GameVerse â€” Where every gamer levels up! From epic AAA adventures to indie
               gems, grab the hottest deals on PC, Xbox, PlayStation & Nintendo. Play
               more, pay less.
             </div>
@@ -385,4 +378,6 @@ export default function AccountOptionsPage() {
     </div>
   );
 }
+
+
 

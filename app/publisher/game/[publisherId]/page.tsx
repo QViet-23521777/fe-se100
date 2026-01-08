@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -125,7 +125,7 @@ export default function PublisherGamesPage() {
   if (!user || !token) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-white/70">Checking authentication…</div>
+        <div className="text-white/70">Checking authenticationâ€¦</div>
       </div>
     );
   }
@@ -134,14 +134,14 @@ export default function PublisherGamesPage() {
     <div className="max-w-7xl mx-auto mt-10 p-6">
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">
-          Manage Games — {user.publisherName || user.name}
+          Manage Games â€” {user.publisherName || user.name}
         </h1>
         <p className="text-white/60 text-sm">Publisher ID: {user.id}</p>
       </div>
 
       <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
         <button
-          onClick={() => router.push(`/publisher/game/create`)}
+          onClick={() => router.push(`/user/manage-games`)}
           className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-lg transition flex items-center gap-2 whitespace-nowrap"
         >
           + Create game
@@ -150,7 +150,7 @@ export default function PublisherGamesPage() {
         <div className="flex-1 flex gap-2 w-full">
           <input
             type="text"
-            placeholder="Search by name, genre, description…"
+            placeholder="Search by name, genre, descriptionâ€¦"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="flex-1 bg-slate-800 border border-slate-700 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-blue-500 transition"
@@ -176,7 +176,7 @@ export default function PublisherGamesPage() {
       {loading ? (
         <div className="text-center py-20">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
-          <p className="mt-4 text-white/60">Loading games…</p>
+          <p className="mt-4 text-white/60">Loading gamesâ€¦</p>
         </div>
       ) : null}
 
@@ -184,7 +184,7 @@ export default function PublisherGamesPage() {
         <div className="text-center py-20">
           <p className="text-xl text-white/70 mb-6">No games yet.</p>
           <button
-            onClick={() => router.push(`/publisher/game/create`)}
+            onClick={() => router.push(`/user/manage-games`)}
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-3 rounded-lg transition"
           >
             Create your first game
@@ -208,7 +208,7 @@ export default function PublisherGamesPage() {
           {filteredGames.length === 0 ? (
             <div className="text-center py-20">
               <p className="text-xl text-white/70">
-                No games match “{searchQuery}”.
+                No games match â€œ{searchQuery}â€.
               </p>
             </div>
           ) : (
@@ -328,7 +328,7 @@ function GameCard({
             disabled={isDeleting}
             className="col-span-2 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg text-sm font-bold transition disabled:opacity-50"
           >
-            {isDeleting ? "Deleting…" : "Delete"}
+            {isDeleting ? "Deletingâ€¦" : "Delete"}
           </button>
         </div>
 
@@ -346,3 +346,4 @@ function GameCard({
     </div>
   );
 }
+

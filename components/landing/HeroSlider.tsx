@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import { useStore } from "@/app/context/StoreContext";
@@ -103,11 +104,14 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       className="relative overflow-hidden rounded-[28px] border border-white/10 bg-white/5 backdrop-blur-xl"
     >
       <div className="absolute inset-0">
-        <img
+        <Image
           key={current.id}
           src={current.imageSrc}
           alt=""
-          className="h-full w-full object-cover opacity-70"
+          fill
+          priority={active === 0}
+          sizes="100vw"
+          className="object-cover opacity-70"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-[#050b2a]/95 via-[#050b2a]/70 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050b2a]/70 via-transparent to-transparent" />

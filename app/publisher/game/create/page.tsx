@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { useAuth } from "@/app/context/AuthContext";
 import { gameStoreApiUrl } from "@/lib/game-store-api";
@@ -19,14 +20,56 @@ type GameForm = {
   steamAppId: string;
 };
 
+type SidebarItem = {
+  title: string;
+  subtitle: string;
+  href: string;
+};
+
+function AccountSidebarItem({
+  title,
+  subtitle,
+  href,
+  active,
+}: SidebarItem & { active?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`relative block px-6 py-5 transition ${
+        active ? "bg-white/10" : "hover:bg-white/5"
+      }`}
+    >
+      {active ? <span className="absolute left-0 top-0 h-full w-2 bg-white/20" /> : null}
+      <p className={`text-lg font-semibold ${active ? "text-white/60" : "text-white"}`}>{title}</p>
+      <p className="mt-1 text-sm text-white/55">{subtitle}</p>
+    </Link>
+  );
+}
+
 export default function CreateGamePage() {
   const router = useRouter();
-  const { user, token } = useAuth();
+  const pathname = usePathname();
+  const { user, token, logout } = useAuth();
 
   const canAccess = useMemo(
     () => Boolean(user && token && (user.accountType === "publisher" || user.accountType === "admin")),
     [token, user]
   );
+
+  const sidebarItems: SidebarItem[] = useMemo(() => {
+    if (user?.accountType === "admin") {
+      return [
+        { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
+        { title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/admin/accounts" },
+        { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
+        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/admin/promotions" },
+      ];
+    }
+    return [
+      { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
+      { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
+    ];
+  }, [user?.accountType]);
 
   const [form, setForm] = useState<GameForm>({
     name: "",
@@ -45,10 +88,10 @@ export default function CreateGamePage() {
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
   useEffect(() => {
-    if (!canAccess) {
-      return;
+    if (pathname === "/publisher/game/create") {
+      router.replace("/user/manage-games");
     }
-  }, [canAccess]);
+  }, [pathname, router]);
 
   const updateField = (name: keyof GameForm, value: string) => {
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -100,7 +143,7 @@ export default function CreateGamePage() {
       }
 
       setMessage({ type: "success", text: "Game created successfully." });
-      router.push("/publisher/dashboard");
+      router.push("/user/account");
     } catch (err) {
       setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to create game." });
     } finally {
@@ -114,12 +157,12 @@ export default function CreateGamePage() {
         <div className="flex w-full flex-col gap-8 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
           <TopBar />
           <div className="mx-auto max-w-lg rounded-3xl border border-red-500/40 bg-red-500/10 p-6 text-center shadow-xl">
-            <p className="mb-4 text-lg text-red-100">Bạn cần đăng nhập bằng tài khoản Publisher hoặc Admin.</p>
+            <p className="mb-4 text-lg text-red-100">Báº¡n cáº§n Ä‘Äƒng nháº­p báº±ng tÃ i khoáº£n Publisher hoáº·c Admin.</p>
             <button
-              onClick={() => router.push("/user/login?next=/publisher/game/create")}
+              onClick={() => router.push("/user/login?next=/user/manage-games")}
               className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#1b1a55]"
             >
-              Đăng nhập
+              ÄÄƒng nháº­p
             </button>
           </div>
         </div>
@@ -131,25 +174,56 @@ export default function CreateGamePage() {
     <div className="min-h-screen bg-[#070f2b] text-white -mx-5 sm:-mx-10">
       <div className="flex w-full flex-col gap-8 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
         <TopBar />
-        <div className="mx-auto w-full max-w-4xl rounded-3xl border border-white/10 bg-[#0c143d]/70 p-8 shadow-2xl backdrop-blur">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-wide text-white/60">Publisher</p>
-              <h1 className="text-3xl font-semibold">Add New Game</h1>
+        <div className="grid gap-10 lg:grid-cols-[360px_1fr]">
+          <aside className="overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-black/20 shadow-2xl backdrop-blur">
+            <div className="bg-white/10 px-6 py-6">
+              <p className="text-2xl font-semibold">My Account</p>
+              <p className="mt-1 text-sm text-white/60">Account Management</p>
             </div>
-            <button
-              type="button"
-              onClick={() => router.push("/publisher/dashboard")}
-              className="rounded-full border border-white/30 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
-            >
-              Back to Dashboard
-            </button>
-          </div>
+            <div className="divide-y divide-white/10">
+              {sidebarItems.map((item) => (
+                <AccountSidebarItem
+                  key={item.href}
+                  title={item.title}
+                  subtitle={item.subtitle}
+                  href={item.href}
+                  active={item.href === "/user/manage-games"}
+                />
+              ))}
+            </div>
+            <div className="px-6 py-6">
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  router.push("/");
+                }}
+                className="w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Log out
+              </button>
+            </div>
+          </aside>
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <main className="rounded-3xl border border-white/10 bg-[#0c143d]/70 p-8 shadow-2xl backdrop-blur">
+            <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm text-white/70">Name</label>
+                <p className="text-sm uppercase tracking-wide text-white/60">Publisher</p>
+                <h1 className="text-3xl font-semibold">Add New Game</h1>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push("/user/account")}
+                className="rounded-full border border-white/30 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Back to Account
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-sm text-white/70">Name</label>
                 <input
                   value={form.name}
                   onChange={(e) => updateField("name", e.target.value)}
@@ -296,6 +370,7 @@ export default function CreateGamePage() {
               </button>
             </div>
           </form>
+          </main>
         </div>
       </div>
     </div>
