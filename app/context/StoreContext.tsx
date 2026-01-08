@@ -8,6 +8,8 @@ import {
   useMemo,
   useReducer,
 } from "react";
+import { useAuth } from "@/app/context/AuthContext";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
 
 export type StoreItemInput = {
   steamAppId?: number;
@@ -30,18 +32,18 @@ export type CartLine = StoreItem & {
 type StoreState = {
   cart: CartLine[];
   wishlist: StoreItem[];
-  hydrated: boolean;
+  wishlistError: string | null;
+  cartError: string | null;
+  cartHydrated: boolean;
+  wishlistHydrated: boolean;
 };
 
 type Action =
-  | { type: "HYDRATE"; payload: { cart: CartLine[]; wishlist: StoreItem[] } }
-  | { type: "ADD_TO_CART"; payload: { item: StoreItem; quantity: number } }
-  | { type: "REMOVE_FROM_CART"; payload: { id: string } }
-  | { type: "SET_CART_QTY"; payload: { id: string; quantity: number } }
-  | { type: "CLEAR_CART" }
-  | { type: "TOGGLE_WISHLIST"; payload: { item: StoreItem } }
-  | { type: "REMOVE_WISHLIST"; payload: { id: string } }
-  | { type: "CLEAR_WISHLIST" };
+  | { type: "SET_CART"; payload: { cart: CartLine[] } }
+  | { type: "SET_CART_ERROR"; payload: { error: string | null } }
+  | { type: "SET_WISHLIST"; payload: { wishlist: StoreItem[] } }
+  | { type: "SET_WISHLIST_ERROR"; payload: { error: string | null } }
+  | { type: "REMOVE_WISHLIST"; payload: { id: string } };
 
 const STORAGE_KEY = "gameverse_store_v1";
 
@@ -68,18 +70,121 @@ function makeItemId(input: StoreItemInput): string {
   return `item:${input.name}`;
 }
 
+function fallbackImage(input: StoreItemInput): string | null {
+  const trimmed = (input.image ?? "").trim();
+  if (trimmed) return trimmed;
+  if (typeof input.steamAppId === "number" && Number.isFinite(input.steamAppId)) {
+    const id = Math.floor(input.steamAppId);
+    return `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${id}/header.jpg`;
+  }
+  return null;
+}
+
 function normalizeItem(input: StoreItemInput): StoreItem {
   const id = makeItemId(input);
   const priceLabel = input.priceLabel ?? null;
   const unitPriceCents = parsePriceToCents(priceLabel);
+  const image = fallbackImage(input);
 
   return {
     ...input,
     priceLabel,
     originalPriceLabel: input.originalPriceLabel ?? null,
+    image: image ?? "",
     id,
     unitPriceCents,
   };
+}
+
+function extractWishlistPayload(input: unknown) {
+  if (Array.isArray(input)) return input;
+  if (input && typeof input === "object" && Array.isArray((input as any).wishlist)) {
+    return (input as any).wishlist as unknown[];
+  }
+  return [];
+}
+
+function normalizeWishlistFromApi(input: unknown): StoreItem[] {
+  const list = extractWishlistPayload(input);
+  const out: StoreItem[] = [];
+
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    const record = raw as Partial<StoreItem>;
+
+    const base: StoreItemInput = {
+      steamAppId:
+        typeof record.steamAppId === "number" && Number.isFinite(record.steamAppId)
+          ? Math.floor(record.steamAppId)
+          : undefined,
+      slug: typeof record.slug === "string" ? record.slug : undefined,
+      name: typeof record.name === "string" ? record.name : "Unknown game",
+      image: typeof record.image === "string" ? record.image : "",
+      priceLabel: typeof record.priceLabel === "string" ? record.priceLabel : null,
+      originalPriceLabel:
+        typeof record.originalPriceLabel === "string" ? record.originalPriceLabel : null,
+    };
+
+    const normalized = normalizeItem(base);
+    const id = typeof record.id === "string" && record.id.trim() ? record.id : normalized.id;
+    const unitPriceCents =
+      typeof record.unitPriceCents === "number" && Number.isFinite(record.unitPriceCents)
+        ? Math.floor(record.unitPriceCents)
+        : normalized.unitPriceCents;
+
+    out.push({ ...normalized, id, unitPriceCents });
+  }
+
+  return out;
+}
+
+function extractCartPayload(input: unknown) {
+  if (Array.isArray(input)) return input;
+  if (input && typeof input === "object" && Array.isArray((input as any).cart)) {
+    return (input as any).cart as unknown[];
+  }
+  return [];
+}
+
+function normalizeCartFromApi(input: unknown): CartLine[] {
+  const list = extractCartPayload(input);
+  const out: CartLine[] = [];
+
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    const record = raw as Partial<CartLine>;
+    const base: StoreItemInput = {
+      steamAppId:
+        typeof record.steamAppId === "number" && Number.isFinite(record.steamAppId)
+          ? Math.floor(record.steamAppId)
+          : undefined,
+      slug: typeof record.slug === "string" ? record.slug : undefined,
+      name: typeof record.name === "string" ? record.name : "Unknown game",
+      image: typeof record.image === "string" ? record.image : "",
+      priceLabel: typeof record.priceLabel === "string" ? record.priceLabel : null,
+      originalPriceLabel:
+        typeof record.originalPriceLabel === "string" ? record.originalPriceLabel : null,
+    };
+    const normalized = normalizeItem(base);
+    const id = typeof record.id === "string" && record.id.trim() ? record.id : normalized.id;
+    const unitPriceCents =
+      typeof record.unitPriceCents === "number" && Number.isFinite(record.unitPriceCents)
+        ? Math.floor(record.unitPriceCents)
+        : normalized.unitPriceCents;
+    const quantity =
+      typeof record.quantity === "number" && Number.isFinite(record.quantity)
+        ? clampQuantity(record.quantity)
+        : 1;
+    out.push({ ...normalized, id, unitPriceCents, quantity });
+  }
+
+  return out;
+}
+
+function extractApiErrorMessage(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const message = (input as any)?.error?.message ?? (input as any)?.message;
+  return typeof message === "string" && message.trim() ? message : null;
 }
 
 function clampQuantity(value: number) {
@@ -89,71 +194,41 @@ function clampQuantity(value: number) {
 
 function reducer(state: StoreState, action: Action): StoreState {
   switch (action.type) {
-    case "HYDRATE":
+    case "SET_CART":
       return {
+        ...state,
         cart: action.payload.cart,
+        cartError: null,
+        cartHydrated: true,
+      };
+
+    case "SET_CART_ERROR":
+      return {
+        ...state,
+        cartError: action.payload.error,
+        cartHydrated: true,
+      };
+
+    case "SET_WISHLIST":
+      return {
+        ...state,
         wishlist: action.payload.wishlist,
-        hydrated: true,
+        wishlistError: null,
+        wishlistHydrated: true,
       };
 
-    case "ADD_TO_CART": {
-      const quantity = clampQuantity(action.payload.quantity);
-      const existingIdx = state.cart.findIndex(
-        (line) => line.id === action.payload.item.id
-      );
-      if (existingIdx >= 0) {
-        const next = [...state.cart];
-        const current = next[existingIdx];
-        next[existingIdx] = {
-          ...current,
-          quantity: clampQuantity(current.quantity + quantity),
-        };
-        return { ...state, cart: next };
-      }
+    case "SET_WISHLIST_ERROR":
       return {
         ...state,
-        cart: [...state.cart, { ...action.payload.item, quantity }],
+        wishlistError: action.payload.error,
+        wishlistHydrated: true,
       };
-    }
-
-    case "REMOVE_FROM_CART":
-      return { ...state, cart: state.cart.filter((line) => line.id !== action.payload.id) };
-
-    case "SET_CART_QTY": {
-      const quantity = Math.floor(action.payload.quantity);
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        return { ...state, cart: state.cart.filter((line) => line.id !== action.payload.id) };
-      }
-      return {
-        ...state,
-        cart: state.cart.map((line) =>
-          line.id === action.payload.id ? { ...line, quantity: clampQuantity(quantity) } : line
-        ),
-      };
-    }
-
-    case "CLEAR_CART":
-      return { ...state, cart: [] };
-
-    case "TOGGLE_WISHLIST": {
-      const exists = state.wishlist.some((item) => item.id === action.payload.item.id);
-      if (exists) {
-        return {
-          ...state,
-          wishlist: state.wishlist.filter((item) => item.id !== action.payload.item.id),
-        };
-      }
-      return { ...state, wishlist: [action.payload.item, ...state.wishlist] };
-    }
 
     case "REMOVE_WISHLIST":
       return {
         ...state,
         wishlist: state.wishlist.filter((item) => item.id !== action.payload.id),
       };
-
-    case "CLEAR_WISHLIST":
-      return { ...state, wishlist: [] };
 
     default:
       return state;
@@ -163,7 +238,10 @@ function reducer(state: StoreState, action: Action): StoreState {
 const StoreContext = createContext<{
   cart: CartLine[];
   wishlist: StoreItem[];
-  hydrated: boolean;
+  wishlistError: string | null;
+  cartError: string | null;
+  cartHydrated: boolean;
+  wishlistHydrated: boolean;
   cartCount: number;
   wishlistCount: number;
   subtotalCents: number;
@@ -178,44 +256,134 @@ const StoreContext = createContext<{
 } | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const { token, user, logout } = useAuth();
   const [state, dispatch] = useReducer(reducer, {
     cart: [],
     wishlist: [],
-    hydrated: false,
+    wishlistError: null,
+    cartError: null,
+    cartHydrated: false,
+    wishlistHydrated: false,
   });
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        dispatch({ type: "HYDRATE", payload: { cart: [], wishlist: [] } });
-        return;
-      }
+    let active = true;
 
-      const parsed = JSON.parse(raw) as Partial<{
-        cart: CartLine[];
-        wishlist: StoreItem[];
-      }>;
-
-      const cart = Array.isArray(parsed.cart) ? parsed.cart : [];
-      const wishlist = Array.isArray(parsed.wishlist) ? parsed.wishlist : [];
-      dispatch({ type: "HYDRATE", payload: { cart, wishlist } });
-    } catch {
-      dispatch({ type: "HYDRATE", payload: { cart: [], wishlist: [] } });
+    const canSyncCart = Boolean(token) && Boolean(user) && user?.accountType === "customer";
+    if (!canSyncCart) {
+      dispatch({ type: "SET_CART", payload: { cart: [] } });
+      return () => {
+        active = false;
+      };
     }
-  }, []);
+
+    (async () => {
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me/cart"), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message = extractApiErrorMessage(data);
+          if (res.status === 401) {
+            logout();
+            return;
+          }
+          dispatch({ type: "SET_CART_ERROR", payload: { error: message || "Failed to load cart." } });
+          dispatch({ type: "SET_CART", payload: { cart: [] } });
+          return;
+        }
+        if (!active) return;
+        dispatch({ type: "SET_CART", payload: { cart: normalizeCartFromApi(data) } });
+      } catch (err) {
+        console.error(err);
+        if (!active) return;
+        dispatch({ type: "SET_CART_ERROR", payload: { error: "Failed to load cart. Please try again." } });
+        dispatch({ type: "SET_CART", payload: { cart: [] } });
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [logout, token, user]);
 
   useEffect(() => {
-    if (!state.hydrated) return;
-    try {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ cart: state.cart, wishlist: state.wishlist })
-      );
-    } catch {
-      // ignore
+    let active = true;
+
+    const canSyncWishlist = Boolean(token) && Boolean(user) && user?.accountType === "customer";
+
+    if (!canSyncWishlist) {
+      dispatch({ type: "SET_WISHLIST", payload: { wishlist: [] } });
+      dispatch({ type: "SET_WISHLIST_ERROR", payload: { error: null } });
+      return () => {
+        active = false;
+      };
     }
-  }, [state.cart, state.hydrated, state.wishlist]);
+
+    (async () => {
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me/wishlist"), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message = extractApiErrorMessage(data);
+          if (res.status === 401) {
+            logout();
+            return;
+          }
+          if (res.status === 403) {
+            if (!active) return;
+            dispatch({ type: "SET_WISHLIST", payload: { wishlist: [] } });
+            dispatch({
+              type: "SET_WISHLIST_ERROR",
+              payload: { error: "Wishlist is available for customer accounts only." },
+            });
+            return;
+          }
+          if (res.status === 404) {
+            if (!active) return;
+            dispatch({ type: "SET_WISHLIST", payload: { wishlist: [] } });
+            dispatch({
+              type: "SET_WISHLIST_ERROR",
+              payload: {
+                error:
+                  "Wishlist endpoint not found on backend. Pull latest `game-store-api` and restart it.",
+              },
+            });
+            return;
+          }
+          if (!active) return;
+          dispatch({ type: "SET_WISHLIST", payload: { wishlist: [] } });
+          dispatch({
+            type: "SET_WISHLIST_ERROR",
+            payload: {
+              error: message || `Failed to load wishlist (HTTP ${res.status}).`,
+            },
+          });
+          return;
+        }
+        if (!active) return;
+        dispatch({ type: "SET_WISHLIST", payload: { wishlist: normalizeWishlistFromApi(data) } });
+        dispatch({ type: "SET_WISHLIST_ERROR", payload: { error: null } });
+      } catch (err) {
+        console.error(err);
+        if (!active) return;
+        dispatch({ type: "SET_WISHLIST", payload: { wishlist: [] } });
+        dispatch({
+          type: "SET_WISHLIST_ERROR",
+          payload: { error: "Failed to load wishlist. Please try again." },
+        });
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [logout, token, user]);
 
   const cartCount = useMemo(
     () => state.cart.reduce((acc, line) => acc + line.quantity, 0),
@@ -233,21 +401,143 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const addToCart = useCallback(
     (input: StoreItemInput, quantity = 1) => {
+      if (!token || !user || user.accountType !== "customer") return;
       const item = normalizeItem(input);
-      dispatch({ type: "ADD_TO_CART", payload: { item, quantity } });
+      const payload: Record<string, unknown> = {
+        item: {
+          id: item.id,
+          steamAppId: item.steamAppId,
+          slug: item.slug,
+          name: item.name,
+          image: item.image,
+          priceLabel: item.priceLabel ?? undefined,
+          originalPriceLabel: item.originalPriceLabel ?? undefined,
+          unitPriceCents: item.unitPriceCents ?? undefined,
+        },
+        quantity: clampQuantity(quantity),
+      };
+      void (async () => {
+        try {
+          const res = await fetch(gameStoreApiUrl("/customers/me/cart"), {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json().catch(() => null);
+          if (!res.ok) {
+            if (res.status === 401) {
+              logout();
+              return;
+            }
+            const message = extractApiErrorMessage(data);
+            dispatch({ type: "SET_CART_ERROR", payload: { error: message || "Failed to update cart." } });
+            return;
+          }
+          dispatch({ type: "SET_CART", payload: { cart: normalizeCartFromApi(data) } });
+        } catch (err) {
+          console.error(err);
+        }
+      })();
     },
-    []
+    [logout, token, user]
   );
 
-  const removeFromCart = useCallback((id: string) => {
-    dispatch({ type: "REMOVE_FROM_CART", payload: { id } });
-  }, []);
+  const removeFromCart = useCallback(
+    (id: string) => {
+      // Always update local state immediately
+      dispatch({
+        type: "SET_CART",
+        payload: {
+          cart: state.cart.filter((line) => line.id !== id),
+        },
+      });
 
-  const setCartQuantity = useCallback((id: string, quantity: number) => {
-    dispatch({ type: "SET_CART_QTY", payload: { id, quantity } });
-  }, []);
+      // Sync with API only for logged-in customers
+      if (!token || !user || user.accountType !== "customer") return;
+      const url = gameStoreApiUrl(`/customers/me/cart/${encodeURIComponent(id)}`);
+      void (async () => {
+        try {
+          const res = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+          const data = await res.json().catch(() => null);
+          if (!res.ok) {
+            if (res.status === 401) {
+              logout();
+              return;
+            }
+            const message = extractApiErrorMessage(data);
+            dispatch({ type: "SET_CART_ERROR", payload: { error: message || "Failed to update cart." } });
+            return;
+          }
+          dispatch({ type: "SET_CART", payload: { cart: normalizeCartFromApi(data) } });
+        } catch (err) {
+          console.error(err);
+        }
+      })();
+    },
+    [logout, state.cart, token, user]
+  );
 
-  const clearCart = useCallback(() => dispatch({ type: "CLEAR_CART" }), []);
+  const setCartQuantity = useCallback(
+    (id: string, quantity: number) => {
+      if (!token || !user || user.accountType !== "customer") return;
+      const url = gameStoreApiUrl(`/customers/me/cart/${encodeURIComponent(id)}`);
+      const body = JSON.stringify({ quantity: clampQuantity(quantity) });
+      void (async () => {
+        try {
+          const res = await fetch(url, {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          });
+          const data = await res.json().catch(() => null);
+          if (!res.ok) {
+            if (res.status === 401) {
+              logout();
+              return;
+            }
+            const message = extractApiErrorMessage(data);
+            dispatch({ type: "SET_CART_ERROR", payload: { error: message || "Failed to update cart." } });
+            return;
+          }
+          dispatch({ type: "SET_CART", payload: { cart: normalizeCartFromApi(data) } });
+        } catch (err) {
+          console.error(err);
+        }
+      })();
+    },
+    [logout, token, user]
+  );
+
+  const clearCart = useCallback(() => {
+    if (!token || !user || user.accountType !== "customer") return;
+    void (async () => {
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me/cart"), {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          if (res.status === 401) {
+            logout();
+            return;
+          }
+          const message = extractApiErrorMessage(data);
+          dispatch({ type: "SET_CART_ERROR", payload: { error: message || "Failed to clear cart." } });
+          return;
+        }
+        dispatch({ type: "SET_CART", payload: { cart: normalizeCartFromApi(data) } });
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, [logout, token, user]);
 
   const isWishlisted = useCallback(
     (input: StoreItemInput | StoreItem) => {
@@ -258,20 +548,120 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toggleWishlist = useCallback((input: StoreItemInput) => {
-    dispatch({ type: "TOGGLE_WISHLIST", payload: { item: normalizeItem(input) } });
-  }, []);
+    if (!token || !user || user.accountType !== "customer") return;
+    const item = normalizeItem(input);
+    if (!item.image.trim()) {
+      dispatch({
+        type: "SET_WISHLIST_ERROR",
+        payload: { error: "Cannot add to wishlist: missing game image." },
+      });
+      return;
+    }
+    const exists = wishlistIds.has(item.id);
+    const url = exists
+      ? gameStoreApiUrl(`/customers/me/wishlist/${encodeURIComponent(item.id)}`)
+      : gameStoreApiUrl("/customers/me/wishlist");
+
+    const payload: Record<string, unknown> = {
+      id: item.id,
+      steamAppId: item.steamAppId,
+      slug: item.slug,
+      name: item.name,
+      image: item.image,
+      priceLabel: item.priceLabel ?? undefined,
+      originalPriceLabel: item.originalPriceLabel ?? undefined,
+    };
+    if (typeof item.unitPriceCents === "number") {
+      payload.unitPriceCents = item.unitPriceCents;
+    }
+
+    void (async () => {
+      try {
+        const res = await fetch(url, {
+          method: exists ? "DELETE" : "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(exists ? {} : { "Content-Type": "application/json" }),
+          },
+          body: exists ? undefined : JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message = extractApiErrorMessage(data);
+          if (res.status === 401) {
+            logout();
+            return;
+          }
+          dispatch({
+            type: "SET_WISHLIST_ERROR",
+            payload: { error: message || `Failed to update wishlist (HTTP ${res.status}).` },
+          });
+          return;
+        }
+        dispatch({ type: "SET_WISHLIST", payload: { wishlist: normalizeWishlistFromApi(data) } });
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, [logout, token, user, wishlistIds]);
 
   const removeWishlist = useCallback((id: string) => {
-    dispatch({ type: "REMOVE_WISHLIST", payload: { id } });
-  }, []);
+    if (!token || !user || user.accountType !== "customer") return;
+    const url = gameStoreApiUrl(`/customers/me/wishlist/${encodeURIComponent(id)}`);
+    void (async () => {
+      try {
+        const res = await fetch(url, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message = extractApiErrorMessage(data);
+          if (res.status === 401) {
+            logout();
+            return;
+          }
+          throw new Error(message || `Failed to remove wishlist item (HTTP ${res.status}).`);
+        }
+        dispatch({ type: "SET_WISHLIST", payload: { wishlist: normalizeWishlistFromApi(data) } });
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, [logout, token, user]);
 
-  const clearWishlist = useCallback(() => dispatch({ type: "CLEAR_WISHLIST" }), []);
+  const clearWishlist = useCallback(() => {
+    if (!token || !user || user.accountType !== "customer") return;
+    void (async () => {
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me/wishlist"), {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message = extractApiErrorMessage(data);
+          if (res.status === 401) {
+            logout();
+            return;
+          }
+          throw new Error(message || `Failed to clear wishlist (HTTP ${res.status}).`);
+        }
+        dispatch({ type: "SET_WISHLIST", payload: { wishlist: normalizeWishlistFromApi(data) } });
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, [logout, token, user]);
 
   const value = useMemo(
     () => ({
       cart: state.cart,
       wishlist: state.wishlist,
-      hydrated: state.hydrated,
+      wishlistError: state.wishlistError,
+      cartError: state.cartError ?? null,
+      cartHydrated: state.cartHydrated,
+      wishlistHydrated: state.wishlistHydrated,
       cartCount,
       wishlistCount: state.wishlist.length,
       subtotalCents,
@@ -294,8 +684,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       removeWishlist,
       setCartQuantity,
       state.cart,
-      state.hydrated,
+      state.cartHydrated,
+      state.cartError,
       state.wishlist,
+      state.wishlistError,
+      state.wishlistHydrated,
       subtotalCents,
       toggleWishlist,
     ]

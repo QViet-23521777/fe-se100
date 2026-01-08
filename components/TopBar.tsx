@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { TopBarSearch } from "@/components/TopBarSearch";
 import { useStore } from "@/app/context/StoreContext";
 import { useAuth } from "@/app/context/AuthContext";
@@ -81,9 +81,12 @@ function CountBadge({ count }: { count: number }) {
 
 export function TopBar({ active = "home" }: Props) {
   const { cartCount, wishlistCount } = useStore();
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // State để lưu các href được tính toán từ client
   const [loginHref, setLoginHref] = useState("/user/login");
@@ -92,31 +95,43 @@ export function TopBar({ active = "home" }: Props) {
   const [uploadGamesHref, setUploadGamesHref] = useState("/publisher/login");
 
   useEffect(() => {
-    setMounted(true);
+    function onClickOutside(e: MouseEvent) {
+      if (!menuRef.current) return;
+      if (!menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
 
-    // Tính toán currentPath từ window (chỉ chạy trên client)
-    const currentPath = `${window.location.pathname}${window.location.search}`;
-
-    // Cập nhật các href với currentPath thực
-    setLoginHref(`/user/login?next=${encodeURIComponent(currentPath)}`);
-    setRegisterHref(`/user/register?next=${encodeURIComponent(currentPath)}`);
-
-    // Account href
-    if (user && token) {
-      setAccountHref("/user/account");
-    } else {
-      setAccountHref(`/user/login?next=${encodeURIComponent("/user/account")}`);
+  const currentPath = useMemo(() => {
+    if (!mounted) return pathname;
+    try {
+      return `${window.location.pathname}${window.location.search}`;
+    } catch {
+      return pathname;
     }
 
-    // Upload games href
-    if (user?.accountType === "publisher" && token && user.id) {
-      setUploadGamesHref(`/publisher/game/${user.id}`);
-    } else {
-      setUploadGamesHref(
-        `/publisher/login?next=${encodeURIComponent("/publisher/game/create")}`
-      );
-    }
-  }, [pathname, user, token]);
+  const loginHref = useMemo(
+    () => `/user/login?next=${encodeURIComponent(currentPath)}`,
+    [currentPath]
+  );
+  const registerHref = useMemo(
+    () => `/user/register?next=${encodeURIComponent(currentPath)}`,
+    [currentPath]
+  );
+  const accountHref = useMemo(() => {
+    if (!mounted || !user || !token) return `/user/login?next=${encodeURIComponent("/user/account")}`;
+    return "/user/account";
+  }, [mounted, token, user]);
+  const wishlistHref = useMemo(
+    () =>
+      mounted && user && token && user.accountType === "customer"
+        ? "/wishlist"
+        : `/user/login?next=${encodeURIComponent("/wishlist")}`,
+    [mounted, token, user]
+  );
 
   const showAuthed = mounted && Boolean(user) && Boolean(token);
 
@@ -126,6 +141,30 @@ export function TopBar({ active = "home" }: Props) {
     { href: uploadGamesHref, label: "Upload games", key: "publisher" },
     { href: "/about", label: "About", key: "about" },
   ];
+
+  const menuItems = useMemo(() => {
+    if (!user || !token) return [];
+    if (user.accountType === "admin") {
+      return [
+        { label: "Admin Accounts", href: "/admin/accounts" },
+        { label: "Manage Games", href: "/publisher/game/create" },
+        { label: "Create Promo Codes", href: "/admin/promotions" },
+        { label: "My Profile", href: "/user/account" },
+      ];
+    }
+    if (user.accountType === "publisher") {
+      return [
+        { label: "Manage Games", href: "/publisher/game/create" },
+        { label: "Orders", href: "/user/orders" },
+        { label: "My Profile", href: "/user/account" },
+      ];
+    }
+    return [
+      { label: "My Account", href: "/user/account" },
+      { label: "My Orders", href: "/user/orders" },
+      { label: "Wishlist", href: "/wishlist" },
+    ];
+  }, [token, user]);
 
   return (
     <div className="relative z-50 flex items-center justify-between gap-4 rounded-[20px] border border-white/10 bg-[#0c143d]/70 px-5 py-4 shadow-md backdrop-blur">
@@ -172,7 +211,7 @@ export function TopBar({ active = "home" }: Props) {
         )}
 
         <Link
-          href="/wishlist"
+          href={wishlistHref}
           className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-white/85"
           aria-label="Wishlist"
         >

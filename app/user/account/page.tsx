@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -106,37 +106,6 @@ type Option = {
   icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactNode;
 };
 
-const OPTIONS: Option[] = [
-  {
-    key: "personal",
-    title: "Personal Information",
-    subtitle: "Modify Your Personal Information",
-    href: "/user/profile",
-    icon: (props) => <UserIcon {...props} />,
-  },
-  {
-    key: "orders",
-    title: "My Orders",
-    subtitle: "Manage Your Previous Orders",
-    href: "/user/orders",
-    icon: (props) => <CartIcon {...props} />,
-  },
-  {
-    key: "wishlist",
-    title: "Wishlist",
-    subtitle: "View Games You Added in Wishlist",
-    href: "/wishlist",
-    icon: (props) => <HeartIcon {...props} />,
-  },
-  {
-    key: "payments",
-    title: "Payment Methods",
-    subtitle: "Adjust Your Payment Method",
-    href: "/user/payment-methods",
-    icon: (props) => <WalletIcon {...props} />,
-  },
-];
-
 function SidebarItem({
   title,
   subtitle,
@@ -199,13 +168,98 @@ export default function AccountOptionsPage() {
     return hashToSixDigits(String(input));
   }, [user?.email, user?.id, user?.name]);
 
+  const options: Option[] = useMemo(() => {
+    if (user?.accountType === "admin") {
+      return [
+        {
+          key: "personal",
+          title: "Personal Information",
+          subtitle: "Modify your personal information",
+          href: "/user/profile",
+          icon: (props) => <UserIcon {...props} />,
+        },
+        {
+          key: "admin-accounts",
+          title: "Manage Accounts",
+          subtitle: "Create or edit admin/publisher accounts",
+          href: "/admin/accounts",
+          icon: (props) => <UserIcon {...props} />,
+        },
+        {
+          key: "games",
+          title: "Manage Games",
+          subtitle: "Create or edit games",
+          href: "/user/manage-games",
+          icon: (props) => <CartIcon {...props} />,
+        },
+        {
+          key: "promos",
+          title: "Manage Promo Codes",
+          subtitle: "Create and manage promotions",
+          href: "/admin/promotions",
+          icon: (props) => <WalletIcon {...props} />,
+        },
+      ];
+    }
+
+    if (user?.accountType === "publisher") {
+      return [
+        {
+          key: "personal",
+          title: "Personal Information",
+          subtitle: "Modify Your Personal Information",
+          href: "/user/profile",
+          icon: (props) => <UserIcon {...props} />,
+        },
+        {
+          key: "games",
+          title: "Manage Games",
+          subtitle: "Create or edit games",
+          href: "/user/manage-games",
+          icon: (props) => <CartIcon {...props} />,
+        },
+      ];
+    }
+
+    return [
+      {
+        key: "personal",
+        title: "Personal Information",
+        subtitle: "Modify Your Personal Information",
+        href: "/user/profile",
+        icon: (props) => <UserIcon {...props} />,
+      },
+      {
+        key: "orders",
+        title: "My Orders",
+        subtitle: "Manage Your Previous Orders",
+        href: "/user/orders",
+        icon: (props) => <CartIcon {...props} />,
+      },
+      {
+        key: "wishlist",
+        title: "Wishlist",
+        subtitle: "View Games You Added in Wishlist",
+        href: "/wishlist",
+        icon: (props) => <HeartIcon {...props} />,
+      },
+      {
+        key: "payments",
+        title: "Payment Methods",
+        subtitle: "Adjust Your Payment Method",
+        href: "/user/payment-methods",
+        icon: (props) => <WalletIcon {...props} />,
+      },
+    ];
+  }, [user?.accountType]);
+
   if (!mounted) {
     return (
       <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
         <div className="flex w-full flex-col gap-12 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
           <TopBar />
           <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/70 shadow-xl">
-            Loading account…
+            Loading accountâ€¦
           </div>
         </div>
       </div>
@@ -227,26 +281,14 @@ export default function AccountOptionsPage() {
             </div>
 
             <div className="divide-y divide-white/10">
-              <SidebarItem
-                title="Personal Information"
-                subtitle="Modify Your Personal Information"
-                href="/user/profile"
-              />
-              <SidebarItem
-                title="My Orders"
-                subtitle="View Your Previous Orders"
-                href="/user/orders"
-              />
-              <SidebarItem
-                title="Wishlist"
-                subtitle="View Games You Added in Wishlist"
-                href="/wishlist"
-              />
-              <SidebarItem
-                title="Payment Methods"
-                subtitle="Adjust Your Payment Method"
-                href="/user/payment-methods"
-              />
+              {options.map((option) => (
+                <SidebarItem
+                  key={option.key}
+                  title={option.title}
+                  subtitle={option.subtitle}
+                  href={option.href}
+                />
+              ))}
             </div>
 
             <div className="px-6 py-6">
@@ -273,7 +315,7 @@ export default function AccountOptionsPage() {
             </div>
 
             <div className="mt-8 grid gap-6 sm:grid-cols-2">
-              {OPTIONS.map((option) => (
+              {options.map((option) => (
                 <ActionCard key={option.key} option={option} />
               ))}
             </div>
@@ -287,7 +329,7 @@ export default function AccountOptionsPage() {
               <span className="text-xl font-semibold">GameVerse</span>
             </div>
             <div className="space-y-2 max-w-xl text-sm text-white/80">
-              GameVerse — Where every gamer levels up! From epic AAA adventures to indie
+              GameVerse â€” Where every gamer levels up! From epic AAA adventures to indie
               gems, grab the hottest deals on PC, Xbox, PlayStation & Nintendo. Play
               more, pay less.
             </div>
@@ -336,4 +378,6 @@ export default function AccountOptionsPage() {
     </div>
   );
 }
+
+
 

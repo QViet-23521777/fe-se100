@@ -1,12 +1,13 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "../../../context/AuthContext";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { TopBar } from "@/components/TopBar";
+import { useAuth } from "@/app/context/AuthContext";
 import { gameStoreApiUrl } from "@/lib/game-store-api";
 
-// ❌ XÓA publisherId khỏi interface
-interface GameForm {
+type GameForm = {
   name: string;
   genre: string;
   description: string;
@@ -14,14 +15,61 @@ interface GameForm {
   videoUrl: string;
   releaseDate: string;
   version: string;
-  originalPrice: number;
-  discountPrice: number;
-  // ❌ XÓA: publisherId
+  originalPrice: string;
+  discountPrice: string;
+  steamAppId: string;
+};
+
+type SidebarItem = {
+  title: string;
+  subtitle: string;
+  href: string;
+};
+
+function AccountSidebarItem({
+  title,
+  subtitle,
+  href,
+  active,
+}: SidebarItem & { active?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`relative block px-6 py-5 transition ${
+        active ? "bg-white/10" : "hover:bg-white/5"
+      }`}
+    >
+      {active ? <span className="absolute left-0 top-0 h-full w-2 bg-white/20" /> : null}
+      <p className={`text-lg font-semibold ${active ? "text-white/60" : "text-white"}`}>{title}</p>
+      <p className="mt-1 text-sm text-white/55">{subtitle}</p>
+    </Link>
+  );
 }
 
 export default function CreateGamePage() {
   const router = useRouter();
-  const { token, user } = useAuth();
+  const pathname = usePathname();
+  const { user, token, logout } = useAuth();
+
+  const canAccess = useMemo(
+    () => Boolean(user && token && (user.accountType === "publisher" || user.accountType === "admin")),
+    [token, user]
+  );
+
+  const sidebarItems: SidebarItem[] = useMemo(() => {
+    if (user?.accountType === "admin") {
+      return [
+        { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
+        { title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/admin/accounts" },
+        { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
+        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/admin/promotions" },
+      ];
+    }
+    return [
+      { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
+      { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
+    ];
+  }, [user?.accountType]);
 
   const [form, setForm] = useState<GameForm>({
     name: "",
@@ -31,318 +79,301 @@ export default function CreateGamePage() {
     videoUrl: "",
     releaseDate: "",
     version: "",
-    originalPrice: 0,
-    discountPrice: 0,
-    // ❌ XÓA: publisherId
+    originalPrice: "",
+    discountPrice: "",
+    steamAppId: "",
   });
 
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
-  // ✅ Check authentication
-  if (!user || user.accountType !== "publisher") {
-    return (
-      <div className="max-w-3xl mx-auto mt-10 p-10">
-        <div className="bg-red-500/20 border border-red-500 p-4 rounded-lg text-center">
-          <p className="text-red-300 mb-4">
-            ❌ Bạn cần đăng nhập với tài khoản Publisher
-          </p>
-          <button
-            onClick={() => router.push("/login/publisher")}
-            className="bg-primary text-black px-6 py-2 rounded-lg font-semibold hover:bg-primary/90"
-          >
-            Đăng nhập Publisher
-          </button>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (pathname === "/publisher/game/create") {
+      router.replace("/user/manage-games");
+    }
+  }, [pathname, router]);
 
-  // ---------------------------------------------------------
-  // 🎲 RANDOM GENERATOR
-  // ---------------------------------------------------------
-  const randomGame = (): GameForm => {
-    const randomNames = [
-      "Dragon Quest Online",
-      "Cyber Runner 2077",
-      "Mystic Forest",
-      "Galaxy Battle Arena",
-      "Racing Rush X",
-      "Shadow Hunter",
-      "Survival Island",
-    ];
-
-    const randomGenres = [
-      "Action",
-      "RPG",
-      "Adventure",
-      "Shooter",
-      "Strategy",
-      "Puzzle",
-    ];
-
-    const randomDescriptions = [
-      "Một cuộc phiêu lưu kỳ bí đầy thử thách.",
-      "Game bắn súng tốc độ cao với đồ họa hiện đại.",
-      "Khám phá thế giới mở rộng lớn chưa từng có.",
-      "Tham gia chiến trường không gian khốc liệt.",
-      "Đua xe tốc độ với nhiều chế độ chơi hấp dẫn.",
-      "Sống sót giữa hòn đảo hoang đầy nguy hiểm.",
-    ];
-
-    return {
-      name: randomNames[Math.floor(Math.random() * randomNames.length)],
-      genre: randomGenres[Math.floor(Math.random() * randomGenres.length)],
-      description:
-        randomDescriptions[
-          Math.floor(Math.random() * randomDescriptions.length)
-        ],
-      imageUrl: `https://picsum.photos/600/400?random=${Math.random()}`,
-      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      releaseDate: "2025-01-01",
-      version: "1.0." + Math.floor(Math.random() * 10),
-      originalPrice: Math.floor(Math.random() * 500) + 50,
-      discountPrice: Math.floor(Math.random() * 300),
-      // ❌ XÓA: publisherId
-    };
+  const updateField = (name: keyof GameForm, value: string) => {
+    setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  // ---------------------------------------------------------
-  // 📝 INPUT CHANGE
-  // ---------------------------------------------------------
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-
-    setForm((prev) => ({
-      ...prev,
-      [name]:
-        name === "originalPrice" || name === "discountPrice"
-          ? Number(value)
-          : value,
-    }));
-  };
-
-  // ---------------------------------------------------------
-  // 🚀 SUBMIT GAME
-  // ---------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setMessage("");
-
-    if (!token) {
-      setMessage("❌ Bạn chưa đăng nhập — không có token.");
-      setLoading(false);
+    if (!canAccess || !token) {
+      setMessage({ type: "error", text: "You must be logged in as a publisher or admin." });
       return;
     }
 
-    if (form.discountPrice > form.originalPrice) {
-      setMessage("❌ Giá giảm không được lớn hơn giá gốc.");
-      setLoading(false);
+    const original = Number(form.originalPrice || 0);
+    const discount = form.discountPrice ? Number(form.discountPrice) : 0;
+    if (discount > original) {
+      setMessage({ type: "error", text: "Discount price cannot exceed original price." });
       return;
     }
+
+    setSubmitting(true);
+    setMessage(null);
 
     try {
-      console.log("📤 Sending game data:", form);
-      console.log("🔑 Using token:", token.substring(0, 20) + "...");
+      const payload = {
+        name: form.name.trim(),
+        genre: form.genre.trim(),
+        description: form.description.trim(),
+        imageUrl: form.imageUrl.trim(),
+        videoUrl: form.videoUrl.trim(),
+        releaseDate: form.releaseDate,
+        version: form.version.trim(),
+        originalPrice: original,
+        discountPrice: discount || undefined,
+        steamAppId: form.steamAppId ? Number(form.steamAppId) : undefined,
+      };
 
       const res = await fetch(gameStoreApiUrl("/games"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // ✅ Backend tự lấy publisherId từ đây
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(form), // ✅ KHÔNG có publisherId
+        body: JSON.stringify(payload),
       });
 
-      const responseData = await res.json();
-      console.log("📥 Response:", responseData);
-
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(responseData.error?.message || "Failed to create game");
+        throw new Error(data?.message || "Failed to create game");
       }
 
-      setMessage("🎉 Game đã được thêm thành công!");
-
-      // ✅ Reset form
-      setForm({
-        name: "",
-        genre: "",
-        description: "",
-        imageUrl: "",
-        videoUrl: "",
-        releaseDate: "",
-        version: "",
-        originalPrice: 0,
-        discountPrice: 0,
-      });
-
-      // ✅ Redirect về trang game list sau 2s
-      setTimeout(() => {
-        router.push(`/publisher/game/${user.id}`);
-      }, 2000);
+      setMessage({ type: "success", text: "Game created successfully." });
+      router.push("/user/account");
     } catch (err) {
-      console.error("❌ Error:", err);
-      setMessage(
-        "❌ Lỗi thêm game: " +
-          (err instanceof Error ? err.message : "Unknown error")
-      );
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to create game." });
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  // ---------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------
+  if (!canAccess) {
+    return (
+      <div className="min-h-screen bg-[#070f2b] text-white -mx-5 sm:-mx-10">
+        <div className="flex w-full flex-col gap-8 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
+          <TopBar />
+          <div className="mx-auto max-w-lg rounded-3xl border border-red-500/40 bg-red-500/10 p-6 text-center shadow-xl">
+            <p className="mb-4 text-lg text-red-100">Báº¡n cáº§n Ä‘Äƒng nháº­p báº±ng tÃ i khoáº£n Publisher hoáº·c Admin.</p>
+            <button
+              onClick={() => router.push("/user/login?next=/user/manage-games")}
+              className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#1b1a55]"
+            >
+              ÄÄƒng nháº­p
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-3xl mx-auto mt-10 glass p-10 rounded-xl card-shadow">
-      <h1 className="text-3xl font-bold mb-6">Thêm Game Mới</h1>
+    <div className="min-h-screen bg-[#070f2b] text-white -mx-5 sm:-mx-10">
+      <div className="flex w-full flex-col gap-8 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
+        <TopBar />
+        <div className="grid gap-10 lg:grid-cols-[360px_1fr]">
+          <aside className="overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-black/20 shadow-2xl backdrop-blur">
+            <div className="bg-white/10 px-6 py-6">
+              <p className="text-2xl font-semibold">My Account</p>
+              <p className="mt-1 text-sm text-white/60">Account Management</p>
+            </div>
+            <div className="divide-y divide-white/10">
+              {sidebarItems.map((item) => (
+                <AccountSidebarItem
+                  key={item.href}
+                  title={item.title}
+                  subtitle={item.subtitle}
+                  href={item.href}
+                  active={item.href === "/user/manage-games"}
+                />
+              ))}
+            </div>
+            <div className="px-6 py-6">
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  router.push("/");
+                }}
+                className="w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Log out
+              </button>
+            </div>
+          </aside>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-        {/* Name + Genre */}
-        <div className="grid grid-cols-2 gap-4">
-          <input
-            name="name"
-            value={form.name}
-            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
-            placeholder="Tên game"
-            onChange={handleChange}
-            required
-          />
+          <main className="rounded-3xl border border-white/10 bg-[#0c143d]/70 p-8 shadow-2xl backdrop-blur">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm uppercase tracking-wide text-white/60">Publisher</p>
+                <h1 className="text-3xl font-semibold">Add New Game</h1>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push("/user/account")}
+                className="rounded-full border border-white/30 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Back to Account
+              </button>
+            </div>
 
-          <input
-            name="genre"
-            value={form.genre}
-            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
-            placeholder="Thể loại (VD: Action, RPG)"
-            onChange={handleChange}
-            required
-          />
+            <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-sm text-white/70">Name</label>
+                <input
+                  value={form.name}
+                  onChange={(e) => updateField("name", e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-white/70">Genre</label>
+                <input
+                  value={form.genre}
+                  onChange={(e) => updateField("genre", e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm text-white/70">Description</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => updateField("description", e.target.value)}
+                required
+                rows={4}
+                className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="text-sm text-white/70">Image URL</label>
+                <input
+                  value={form.imageUrl}
+                  onChange={(e) => updateField("imageUrl", e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-white/70">Video URL</label>
+                <input
+                  value={form.videoUrl}
+                  onChange={(e) => updateField("videoUrl", e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label className="text-sm text-white/70">Release Date</label>
+                <input
+                  type="date"
+                  value={form.releaseDate}
+                  onChange={(e) => updateField("releaseDate", e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-white/70">Version</label>
+                <input
+                  value={form.version}
+                  onChange={(e) => updateField("version", e.target.value)}
+                  required
+                  placeholder="1.0.0"
+                  className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-white/70">Steam App ID (optional)</label>
+                <input
+                  value={form.steamAppId}
+                  onChange={(e) => updateField("steamAppId", e.target.value)}
+                  placeholder="e.g. 730"
+                  className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="text-sm text-white/70">Original Price</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.originalPrice}
+                  onChange={(e) => updateField("originalPrice", e.target.value)}
+                  required
+                  className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-white/70">Discount Price (optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.discountPrice}
+                  onChange={(e) => updateField("discountPrice", e.target.value)}
+                  className="mt-1 w-full rounded-xl bg-white/10 px-4 py-3 text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                />
+              </div>
+            </div>
+
+            {message ? (
+              <div
+                className={`rounded-xl border px-4 py-3 text-sm ${
+                  message.type === "success"
+                    ? "border-green-500/40 bg-green-500/10 text-green-100"
+                    : "border-red-500/40 bg-red-500/10 text-red-100"
+                }`}
+              >
+                {message.text}
+              </div>
+            ) : null}
+
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-[#1b1a55] disabled:opacity-60"
+              >
+                {submitting ? "Creating..." : "Create Game"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({
+                  name: "",
+                  genre: "",
+                  description: "",
+                  imageUrl: "",
+                  videoUrl: "",
+                  releaseDate: "",
+                  version: "",
+                  originalPrice: "",
+                  discountPrice: "",
+                  steamAppId: "",
+                })}
+                className="rounded-full border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Reset
+              </button>
+            </div>
+          </form>
+          </main>
         </div>
-
-        {/* Description */}
-        <textarea
-          name="description"
-          value={form.description}
-          className="w-full bg-dark-200 px-4 py-2 rounded text-white"
-          placeholder="Mô tả game"
-          rows={3}
-          onChange={handleChange}
-          required
-        />
-
-        {/* Image + Video */}
-        <div className="grid grid-cols-2 gap-4">
-          <input
-            name="imageUrl"
-            value={form.imageUrl}
-            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
-            placeholder="Image URL"
-            onChange={handleChange}
-            required
-          />
-
-          <input
-            name="videoUrl"
-            value={form.videoUrl}
-            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
-            placeholder="Video URL (YouTube)"
-            onChange={handleChange}
-            required
-          />
-        </div>
-
-        {/* Release date + Version */}
-        <div className="grid grid-cols-2 gap-4">
-          <input
-            name="releaseDate"
-            type="date"
-            value={form.releaseDate}
-            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
-            onChange={handleChange}
-            required
-          />
-
-          <input
-            name="version"
-            value={form.version}
-            className="w-full bg-dark-200 px-4 py-2 rounded text-white"
-            placeholder="Version (VD: 1.0.0)"
-            onChange={handleChange}
-            required
-          />
-        </div>
-
-        {/* ✅ ĐỔI: grid-cols-3 → grid-cols-2 (vì đã xóa Publisher ID) */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col">
-            <label className="text-sm mb-1 text-gray-300">
-              Giá gốc (VNĐ) *
-            </label>
-            <input
-              name="originalPrice"
-              type="number"
-              value={form.originalPrice}
-              className="w-full bg-dark-200 px-4 py-2 rounded text-white"
-              placeholder="Nhập giá gốc"
-              onChange={handleChange}
-              required
-              min="0"
-            />
-          </div>
-
-          <div className="flex flex-col">
-            <label className="text-sm mb-1 text-gray-300">
-              Giá giảm (VNĐ) *
-            </label>
-            <input
-              name="discountPrice"
-              type="number"
-              value={form.discountPrice}
-              className="w-full bg-dark-200 px-4 py-2 rounded text-white"
-              placeholder="Nhập giá sau giảm"
-              onChange={handleChange}
-              required
-              min="0"
-            />
-          </div>
-        </div>
-
-        {/* ❌ XÓA TOÀN BỘ phần Publisher ID input */}
-
-        {/* Random Button */}
-        <button
-          type="button"
-          onClick={() => setForm(randomGame())}
-          className="w-full bg-blue-500 text-white font-semibold py-2 rounded-lg hover:bg-blue-600 transition"
-        >
-          🎲 Tạo Game Ngẫu Nhiên
-        </button>
-
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-primary text-black font-semibold py-3 rounded-lg hover:bg-primary/90 transition disabled:opacity-50"
-        >
-          {loading ? "⏳ Đang thêm..." : "➕ Thêm Game"}
-        </button>
-      </form>
-
-      {message && (
-        <div
-          className={`mt-4 p-4 rounded-lg text-center font-medium ${
-            message.includes("thành công")
-              ? "bg-green-500/20 border border-green-500 text-green-300"
-              : "bg-red-500/20 border border-red-500 text-red-300"
-          }`}
-        >
-          {message}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
+

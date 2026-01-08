@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -109,7 +109,7 @@ export default function LoginPage() {
     setMessage(null);
 
     try {
-      const res = await fetch(gameStoreApiUrl("/auth/customer/login"), {
+      const res = await fetch(gameStoreApiUrl("/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -131,6 +131,7 @@ export default function LoginPage() {
       }
 
       login(data.user as any, data.token);
+
       setMessage({ type: "success", text: "Logged in! Redirecting..." });
       router.push(nextPath);
     } catch (err) {
@@ -147,7 +148,7 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="absolute left-2 top-2 text-white/70 text-2xl leading-none"
+          className="absolute left-2 top-2 text-white/70 text-3xl leading-none"
           aria-label="Close"
         >
           ×
@@ -238,3 +239,8 @@ export default function LoginPage() {
     </div>
   );
 }
+
+
+
+
+

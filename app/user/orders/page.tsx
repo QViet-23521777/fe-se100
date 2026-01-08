@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { TopBar } from "@/components/TopBar";
 import { useAuth } from "@/app/context/AuthContext";
 import { gameStoreApiUrl } from "@/lib/game-store-api";
-import { getOrders, type OrderRecord } from "@/lib/orders";
 
 const logo = "/assets/figma-logo.svg";
 const socials = [
@@ -64,7 +63,6 @@ type OrderView = {
   dateIso: string;
   totalCents: number;
   items: OrderItemView[];
-  source: "local" | "api";
 };
 
 const MONTHS = [
@@ -108,38 +106,6 @@ function parseAmountToCents(value: unknown) {
 function parseCentsValue(value: unknown) {
   if (typeof value !== "number" || !Number.isFinite(value)) return 0;
   return Math.max(0, Math.floor(value));
-}
-
-function normalizeLocalOrders(records: OrderRecord[]): OrderView[] {
-  return records
-    .map((order) => {
-      const id = safeString(order.id) || `local_${order.createdAt}`;
-      const items: OrderItemView[] = (order.items ?? []).map((item) => ({
-        id: safeString(item.id) || `${id}_${item.name}`,
-        name: safeString(item.name) || "Unknown game",
-        quantity:
-          typeof item.quantity === "number" && Number.isFinite(item.quantity)
-            ? Math.max(1, Math.floor(item.quantity))
-            : 1,
-        unitPriceCents:
-          typeof item.unitPriceCents === "number" && Number.isFinite(item.unitPriceCents)
-            ? item.unitPriceCents
-            : null,
-        image: safeString(item.image) || undefined,
-      }));
-
-      return {
-        id,
-        dateIso: safeString(order.createdAt) || new Date().toISOString(),
-        totalCents:
-          typeof order.totalCents === "number" && Number.isFinite(order.totalCents)
-            ? Math.max(0, Math.floor(order.totalCents))
-            : 0,
-        items,
-        source: "local",
-      } satisfies OrderView;
-    })
-    .filter((order) => Boolean(order.id));
 }
 
 function normalizeApiOrders(input: unknown): OrderView[] {
@@ -238,24 +204,9 @@ function normalizeApiOrders(input: unknown): OrderView[] {
         dateIso,
         totalCents,
         items,
-        source: "api",
       } satisfies OrderView;
     })
     .filter((order) => Boolean(order.id));
-}
-
-function mergeOrders(localOrders: OrderView[], apiOrders: OrderView[]) {
-  const byId = new Map<string, OrderView>();
-  for (const order of localOrders) byId.set(order.id, order);
-  for (const order of apiOrders) byId.set(order.id, order);
-
-  return Array.from(byId.values()).sort((a, b) => {
-    const at = Date.parse(a.dateIso);
-    const bt = Date.parse(b.dateIso);
-    const aTime = Number.isFinite(at) ? at : 0;
-    const bTime = Number.isFinite(bt) ? bt : 0;
-    return bTime - aTime;
-  });
 }
 
 function ChevronDownIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -349,11 +300,6 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!mounted) return;
-    setOrders(normalizeLocalOrders(getOrders()));
-  }, [mounted]);
-
-  useEffect(() => {
-    if (!mounted) return;
     try {
       setNewFlag(new URLSearchParams(window.location.search).get("new"));
     } catch {
@@ -371,6 +317,14 @@ export default function OrdersPage() {
       setHashOrderId(null);
     }
   }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (token) return;
+    setOrders([]);
+    setApiError(null);
+    setLoadingApi(false);
+  }, [mounted, token]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -393,10 +347,8 @@ export default function OrdersPage() {
             "Could not load server orders right now.";
           throw new Error(message);
         }
-        const localOrders = normalizeLocalOrders(getOrders());
-        const apiOrders = normalizeApiOrders(data);
         if (!active) return;
-        setOrders(mergeOrders(localOrders, apiOrders));
+        setOrders(normalizeApiOrders(data));
       } catch (err) {
         console.error(err);
         if (!active) return;
@@ -465,8 +417,7 @@ export default function OrdersPage() {
           <main className="space-y-6 rounded-3xl border border-white/10 bg-[#1b1a55]/30 p-6 shadow-2xl backdrop-blur">
             {showLogin ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/75">
-                Log in to sync orders from your account. Local checkout orders will still
-                show here.
+                Log in to view your orders.
               </div>
             ) : null}
 
@@ -524,12 +475,7 @@ export default function OrdersPage() {
 
                       {isExpanded ? (
                         <div className="mt-4 rounded-2xl border border-white/10 bg-black/10 p-5">
-                          <div className="flex items-center justify-between gap-4">
-                            <p className="text-sm font-semibold text-white">Order items</p>
-                            <span className="text-xs text-white/50">
-                              Source: {order.source === "api" ? "Account" : "Local"}
-                            </span>
-                          </div>
+                          <p className="text-sm font-semibold text-white">Order items</p>
 
                           {order.items.length === 0 ? (
                             <p className="mt-4 text-sm text-white/70">

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -96,7 +96,7 @@ function Input({
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, token, login } = useAuth();
+  const { user, token, login, logout } = useAuth();
 
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -120,6 +120,24 @@ export default function ProfilePage() {
 
     let active = true;
     (async () => {
+      // For admin/publisher, skip customer endpoint and just show basic info
+      if (user?.accountType && user.accountType !== "customer") {
+        const fallback: CustomerProfile = {
+          id: user.id,
+          email: user.email,
+          username: user.name,
+          phoneNumber: "",
+        };
+        setProfile(fallback);
+        setForm({
+          username: fallback.username ?? "",
+          email: fallback.email ?? "",
+          phoneNumber: fallback.phoneNumber ?? "",
+        });
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setMessage(null);
       try {
@@ -177,8 +195,38 @@ export default function ProfilePage() {
     return `${base}-#${gamerNumber}`;
   }, [mounted, form.username, gamerNumber, user?.name]);
 
+  const sidebarItems = useMemo(() => {
+    if (user?.accountType === "admin") {
+      return [
+        { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
+        { title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/admin/accounts" },
+        { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
+        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/admin/promotions" },
+      ];
+    }
+    if (user?.accountType === "publisher") {
+      return [
+        { title: "Personal Information", subtitle: "Modify Your Personal Information", href: "/user/profile" },
+        { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
+      ];
+    }
+    return [
+      { title: "Personal Information", subtitle: "Modify Your Personal Information", href: "/user/profile" },
+      { title: "My Orders", subtitle: "View Your Previous Orders", href: "/user/orders" },
+      { title: "Wishlist", subtitle: "View Games You Added in Wishlist", href: "/wishlist" },
+      { title: "Payment Methods", subtitle: "Adjust Your Payment Method", href: "/user/payment-methods" },
+    ];
+  }, [user?.accountType]);
+
   async function onSave() {
     if (!token) return;
+    if (user?.accountType && user.accountType !== "customer") {
+      setMessage({
+        type: "error",
+        text: "Editing profile is only available for customer accounts.",
+      });
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
@@ -237,27 +285,27 @@ export default function ProfilePage() {
             </div>
 
             <div className="divide-y divide-white/10">
-              <AccountSidebarItem
-                title="Personal Information"
-                subtitle="Modify Your Personal Information"
-                href="/user/profile"
-                active
-              />
-              <AccountSidebarItem
-                title="My Orders"
-                subtitle="View Your Previous Orders"
-                href="/user/orders"
-              />
-              <AccountSidebarItem
-                title="Wishlist"
-                subtitle="View Games You Added in Wishlist"
-                href="/wishlist"
-              />
-              <AccountSidebarItem
-                title="Payment Methods"
-                subtitle="Adjust Your Payment Method"
-                href="/user/payment-methods"
-              />
+              {sidebarItems.map((item) => (
+                <AccountSidebarItem
+                  key={item.href}
+                  title={item.title}
+                  subtitle={item.subtitle}
+                  href={item.href}
+                  active={item.href === "/user/profile"}
+                />
+              ))}
+            </div>
+            <div className="px-6 py-6">
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  router.push("/");
+                }}
+                className="w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Log out
+              </button>
             </div>
           </aside>
 
@@ -330,12 +378,10 @@ export default function ProfilePage() {
                   disabled={saving || loading}
                   className="h-11 w-[110px] rounded-full bg-white text-sm font-semibold text-[#1b1a55] disabled:opacity-60"
                 >
-                  {saving ? "Saving…" : "Save"}
+                  {saving ? "Savingâ€¦" : "Save"}
                 </button>
 
-                {loading ? (
-                  <span className="text-sm text-white/60">Loading…</span>
-                ) : null}
+                {loading ? <span className="text-sm text-white/60">Loadingâ€¦</span> : null}
               </div>
             </div>
           </main>
@@ -348,9 +394,9 @@ export default function ProfilePage() {
               <span className="text-xl font-semibold">GameVerse</span>
             </div>
             <div className="space-y-2 max-w-xl text-sm text-white/80">
-              GameVerse — Where every gamer levels up! From epic AAA adventures
-              to indie gems, grab the hottest deals on PC, Xbox, PlayStation &
-              Nintendo. Play more, pay less.
+              GameVerse â€” Where every gamer levels up! From epic AAA adventures to indie
+              gems, grab the hottest deals on PC, Xbox, PlayStation & Nintendo. Play
+              more, pay less.
             </div>
             <div className="grid grid-cols-2 gap-10 text-sm">
               <div className="space-y-2">
@@ -397,3 +443,6 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+
+

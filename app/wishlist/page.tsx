@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { TopBar } from "@/components/TopBar";
 import { useStore, type StoreItem } from "@/app/context/StoreContext";
+import { useAuth } from "@/app/context/AuthContext";
+import { useEffect, useState } from "react";
 
 function hrefForItem(item: StoreItem) {
   if (typeof item.steamAppId === "number") return `/product/${item.steamAppId}`;
@@ -11,7 +13,23 @@ function hrefForItem(item: StoreItem) {
 }
 
 export default function WishlistPage() {
-  const { wishlist, addToCart, removeWishlist } = useStore();
+  const { token } = useAuth();
+  const { wishlist, addToCart, removeWishlist, wishlistHydrated, wishlistError } = useStore();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  const summaryText = !mounted
+    ? "Loading wishlist…"
+    : !token
+      ? "Log in to view your wishlist"
+      : !wishlistHydrated
+        ? "Loading wishlist…"
+        : wishlistError
+          ? wishlistError
+          : wishlist.length === 0
+            ? "No saved games yet"
+            : `${wishlist.length} saved game${wishlist.length === 1 ? "" : "s"}`;
 
   return (
     <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
@@ -20,16 +38,32 @@ export default function WishlistPage() {
 
         <header className="space-y-2">
           <h1 className="text-3xl font-semibold">Wishlist</h1>
-          <p className="text-white/70">
-            {wishlist.length === 0
-              ? "No saved games yet"
-              : `${wishlist.length} saved game${
-                  wishlist.length === 1 ? "" : "s"
-                }`}
-          </p>
+          <p className="text-white/70">{summaryText}</p>
         </header>
 
-        {wishlist.length === 0 ? (
+        {!mounted ? (
+          <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/75 shadow-xl">
+            Loading your wishlist…
+          </div>
+        ) : !token ? (
+          <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/75 shadow-xl">
+            <p className="mb-4">Log in to save games to your wishlist and sync them across devices.</p>
+            <Link
+              href="/user/login?next=%2Fwishlist"
+              className="inline-flex rounded-full bg-white px-6 py-3 text-sm font-semibold text-[#1b1a55]"
+            >
+              Log in
+            </Link>
+          </div>
+        ) : !wishlistHydrated ? (
+          <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/75 shadow-xl">
+            Loading your wishlist…
+          </div>
+        ) : wishlistError ? (
+          <div className="rounded-3xl border border-red-400/30 bg-red-500/10 p-6 text-white/85 shadow-xl">
+            {wishlistError}
+          </div>
+        ) : wishlist.length === 0 ? (
           <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/75 shadow-xl">
             <p className="mb-4">Save games to your wishlist to find them later.</p>
             <Link
@@ -79,9 +113,7 @@ export default function WishlistPage() {
                             {item.originalPriceLabel}
                           </span>
                         ) : null}
-                        <span className="font-semibold">
-                          {item.priceLabel ?? "—"}
-                        </span>
+                        <span className="font-semibold">{item.priceLabel ?? "—"}</span>
                       </div>
                       <button
                         type="button"
@@ -113,4 +145,3 @@ export default function WishlistPage() {
     </div>
   );
 }
-

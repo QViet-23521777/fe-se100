@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useStore } from "@/app/context/StoreContext";
+import { useAuth } from "@/app/context/AuthContext";
 
 export type HeroSlide = {
   id: string;
@@ -50,7 +53,9 @@ function ChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
 
 export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { addToCart, isWishlisted, toggleWishlist } = useStore();
+  const { token, user } = useAuth();
   const safeSlides = useMemo(
     () => (slides.length > 0 ? slides : []),
     [slides]
@@ -88,6 +93,10 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   if (!current || !storeItem) return null;
 
   const wishlisted = isWishlisted(storeItem);
+  const loginHref = useMemo(
+    () => `/user/login?next=${encodeURIComponent(pathname ?? "/")}`,
+    [pathname]
+  );
 
   return (
     <section
@@ -95,11 +104,14 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       className="relative overflow-hidden rounded-[28px] border border-white/10 bg-white/5 backdrop-blur-xl"
     >
       <div className="absolute inset-0">
-        <img
+        <Image
           key={current.id}
           src={current.imageSrc}
           alt=""
-          className="h-full w-full object-cover opacity-70"
+          fill
+          priority={active === 0}
+          sizes="100vw"
+          className="object-cover opacity-70"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-[#050b2a]/95 via-[#050b2a]/70 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050b2a]/70 via-transparent to-transparent" />
@@ -127,6 +139,10 @@ export default function HeroSlider({ slides }: { slides: HeroSlide[] }) {
             <button
               type="button"
               onClick={() => {
+                if (!token || user?.accountType !== "customer") {
+                  router.push(loginHref);
+                  return;
+                }
                 addToCart(storeItem, 1);
                 router.push("/checkout");
               }}
