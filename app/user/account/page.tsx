@@ -182,7 +182,7 @@ export default function AccountOptionsPage() {
           key: "admin-accounts",
           title: "Manage Accounts",
           subtitle: "Create or edit admin/publisher accounts",
-          href: "/admin/accounts",
+          href: "/user/manage-accounts",
           icon: (props) => <UserIcon {...props} />,
         },
         {

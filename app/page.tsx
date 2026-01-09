@@ -902,6 +902,38 @@ export default async function Home() {
       return b.recommendations - a.recommendations;
     });
 
+  // If Steam doesn't return enough discounted titles, fall back to popular items and
+  // synthesize a reasonable discount so the row still shows real games instead of
+  // static placeholders.
+  const dealCandidates = [...dealsPool];
+  if (dealCandidates.length < perRow) {
+    const filler = scoredUnique
+      .filter((item) => !item.comingSoon)
+      .sort((a, b) => b.recommendations - a.recommendations)
+      .map((item) => {
+        const original =
+          typeof item.originalPrice === "number"
+            ? item.originalPrice
+            : pseudoOriginalPrice(item.app.steamAppId);
+        const price =
+          typeof item.price === "number" && item.price > 0
+            ? item.price
+            : Math.max(0, Math.round(original * (100 - pseudoDiscountPercent(item.app.steamAppId))) / 100);
+        const discount =
+          item.discountPercent && item.discountPercent > 0
+            ? item.discountPercent
+            : Math.max(1, pseudoDiscountPercent(item.app.steamAppId));
+
+        return {
+          ...item,
+          originalPrice: original,
+          price,
+          discountPercent: discount,
+        };
+      });
+    dealCandidates.push(...filler);
+  }
+
   const upcomingPool = scoredUnique
     .filter((item) => item.comingSoon)
     .sort((a, b) => b.recommendations - a.recommendations);
@@ -921,7 +953,7 @@ export default async function Home() {
     return picked;
   }
 
-  const bestDealPicked = takeUnique(dealsPool, perRow);
+  const bestDealPicked = takeUnique(dealCandidates, perRow);
   const bestsellerPicked = takeUnique(popularPool, perRow);
   const trendingPicked = takeUnique(popularPool.slice(perRow), perRow);
   const upcomingBase = takeUnique(upcomingPool, perRow);
