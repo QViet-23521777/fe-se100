@@ -12,6 +12,9 @@ export type CarouselItem = {
   originalPrice?: number;
   discountPercent?: number;
   imageSrc: string;
+  href?: string;
+  slug?: string;
+  steamAppId?: number;
 };
 
 function ChevronLeftIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -131,12 +134,18 @@ export default function CarouselRow({
         >
           {items.map((item) => {
             const asNumber = Number(item.id);
-            const steamAppId =
+            const numericId =
               Number.isFinite(asNumber) && Number.isInteger(asNumber) ? asNumber : undefined;
-            const href = steamAppId ? `/product/${steamAppId}` : `/product/game/${item.id}`;
+            const steamAppId = item.steamAppId ?? numericId;
+            const slug =
+              item.slug ??
+              (typeof item.id === "string" && /^[a-f0-9]{24}$/i.test(item.id) ? item.id : undefined);
+            const href =
+              item.href ??
+              (steamAppId ? `/product/${steamAppId}` : slug ? `/product/game/${slug}` : `/browse?q=${encodeURIComponent(item.title)}`);
             const storeItem = {
               steamAppId,
-              slug: steamAppId ? undefined : item.id,
+              slug: steamAppId ? undefined : slug,
               name: item.title,
               image: item.imageSrc,
               priceLabel: `$${item.price.toFixed(2)}`,

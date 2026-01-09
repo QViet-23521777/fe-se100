@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { TopBarSearch } from "@/components/TopBarSearch";
 import { useStore } from "@/app/context/StoreContext";
 import { useAuth } from "@/app/context/AuthContext";
@@ -81,29 +81,12 @@ function CountBadge({ count }: { count: number }) {
 
 export function TopBar({ active = "home" }: Props) {
   const { cartCount, wishlistCount } = useStore();
-  const { user, token, logout } = useAuth();
+  const { user, token } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
 
-  // State để lưu các href được tính toán từ client
-  const [loginHref, setLoginHref] = useState("/user/login");
-  const [registerHref, setRegisterHref] = useState("/user/register");
-  const [accountHref, setAccountHref] = useState("/user/account");
-  const [uploadGamesHref, setUploadGamesHref] = useState("/publisher/login");
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), []);
 
   const currentPath = useMemo(() => {
     if (!mounted) return pathname;
@@ -112,6 +95,7 @@ export function TopBar({ active = "home" }: Props) {
     } catch {
       return pathname;
     }
+  }, [mounted, pathname]);
 
   const loginHref = useMemo(
     () => `/user/login?next=${encodeURIComponent(currentPath)}`,
@@ -138,33 +122,8 @@ export function TopBar({ active = "home" }: Props) {
   const links: { href: string; label: string; key: Props["active"] }[] = [
     { href: "/", label: "Home", key: "home" },
     { href: "/browse", label: "Browse", key: "browse" },
-    { href: uploadGamesHref, label: "Upload games", key: "publisher" },
     { href: "/about", label: "About", key: "about" },
   ];
-
-  const menuItems = useMemo(() => {
-    if (!user || !token) return [];
-    if (user.accountType === "admin") {
-      return [
-        { label: "Admin Accounts", href: "/admin/accounts" },
-        { label: "Manage Games", href: "/publisher/game/create" },
-        { label: "Create Promo Codes", href: "/admin/promotions" },
-        { label: "My Profile", href: "/user/account" },
-      ];
-    }
-    if (user.accountType === "publisher") {
-      return [
-        { label: "Manage Games", href: "/publisher/game/create" },
-        { label: "Orders", href: "/user/orders" },
-        { label: "My Profile", href: "/user/account" },
-      ];
-    }
-    return [
-      { label: "My Account", href: "/user/account" },
-      { label: "My Orders", href: "/user/orders" },
-      { label: "Wishlist", href: "/wishlist" },
-    ];
-  }, [token, user]);
 
   return (
     <div className="relative z-50 flex items-center justify-between gap-4 rounded-[20px] border border-white/10 bg-[#0c143d]/70 px-5 py-4 shadow-md backdrop-blur">
@@ -179,9 +138,7 @@ export function TopBar({ active = "home" }: Props) {
               key={link.href}
               href={link.href}
               className={`transition-colors ${
-                active === link.key
-                  ? "font-semibold text-white"
-                  : "text-white/75"
+                active === link.key ? "font-semibold text-white" : "text-white/75"
               }`}
             >
               {link.label}
