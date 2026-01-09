@@ -40,7 +40,6 @@ function pseudoOriginalPrice(steamAppId: number) {
 
 function steamHeaderUrl(app: SteamApp) {
   return (
-    app.avatarUrl ??
     `https://cdn.cloudflare.steamstatic.com/steam/apps/${app.steamAppId}/header.jpg`
   );
 }

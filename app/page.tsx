@@ -81,7 +81,6 @@ function parseUsdLabel(label: string | undefined) {
 
 function steamHeaderUrl(app: SteamApp) {
   return (
-    app.avatarUrl ??
     `https://cdn.cloudflare.steamstatic.com/steam/apps/${app.steamAppId}/header.jpg`
   );
 }
@@ -152,6 +151,7 @@ function toCarouselItemFromScore(
   scored: ScoredSteamApp,
   kind: "default" | "deal" = "default"
 ): CarouselItem {
+  const title = scored.details?.name?.trim() || scored.app.name;
   if (kind === "deal") {
     const original =
       typeof scored.originalPrice === "number"
@@ -164,7 +164,7 @@ function toCarouselItemFromScore(
 
     return {
       id: String(scored.app.steamAppId),
-      title: scored.app.name,
+      title,
       price,
       originalPrice: original,
       discountPercent: scored.discountPercent || undefined,
@@ -174,7 +174,7 @@ function toCarouselItemFromScore(
 
   return {
     id: String(scored.app.steamAppId),
-    title: scored.app.name,
+    title,
     price: Number.isFinite(scored.price) ? scored.price : pseudoOriginalPrice(scored.app.steamAppId),
     imageSrc: scored.imageSrc,
   };
@@ -186,6 +186,7 @@ function toGameItemFromScore(
 ): GameItem {
   const safePrice = Number.isFinite(scored.price) ? scored.price : pseudoOriginalPrice(scored.app.steamAppId);
   const priceLabel = scored.details?.is_free ? "Free" : formatUsd(safePrice);
+  const title = scored.details?.name?.trim() || scored.app.name;
 
   if (options.kind === "deal") {
     const originalPrice =
@@ -194,7 +195,7 @@ function toGameItemFromScore(
         : pseudoOriginalPrice(scored.app.steamAppId);
     return {
       steamAppId: scored.app.steamAppId,
-      title: scored.app.name,
+      title,
       price: scored.details?.is_free ? "Free" : formatUsd(safePrice),
       originalPrice: formatUsd(originalPrice),
       image: scored.imageSrc,
@@ -205,7 +206,7 @@ function toGameItemFromScore(
 
   return {
     steamAppId: scored.app.steamAppId,
-    title: scored.app.name,
+    title,
     price: priceLabel,
     image: scored.imageSrc,
     cta: options.cta,
@@ -949,18 +950,21 @@ export default async function Home() {
     title: game.title,
     price: parseUsdLabel(game.price),
     imageSrc: game.image,
+    href: `/browse?q=${encodeURIComponent(game.title)}`,
   }));
   const fallbackTrending = trendingGames.map((game) => ({
     id: game.steamAppId ? String(game.steamAppId) : game.title,
     title: game.title,
     price: parseUsdLabel(game.price),
     imageSrc: game.image,
+    href: `/browse?q=${encodeURIComponent(game.title)}`,
   }));
   const fallbackBestsellers = bestsellers.map((game) => ({
     id: game.steamAppId ? String(game.steamAppId) : game.title,
     title: game.title,
     price: parseUsdLabel(game.price),
     imageSrc: game.image,
+    href: `/browse?q=${encodeURIComponent(game.title)}`,
   }));
   const fallbackDeals = bestDeals.map((game) => {
     const discountPercent = game.tag
@@ -974,6 +978,7 @@ export default async function Home() {
       originalPrice: game.originalPrice ? parseUsdLabel(game.originalPrice) : undefined,
       discountPercent: Number.isFinite(discountPercent) ? discountPercent : undefined,
       imageSrc: game.image,
+      href: `/browse?q=${encodeURIComponent(game.title)}`,
     };
   });
 

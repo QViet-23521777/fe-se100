@@ -287,9 +287,8 @@ export default async function ProductPage({
     details?.background_raw ??
     details?.background ??
     details?.header_image ??
-    record?.avatarUrl ??
     `https://cdn.cloudflare.steamstatic.com/steam/apps/${steamAppId}/header.jpg`;
-  const cover = details?.header_image ?? record?.avatarUrl ?? hero;
+  const cover = details?.header_image ?? hero;
   const shortDescription =
     stripHtml(details?.short_description) ||
     stripHtml(details?.about_the_game) ||
