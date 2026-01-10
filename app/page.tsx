@@ -774,6 +774,7 @@ function Hero({ featured }: { featured: GameItem }) {
         alt={featured.title}
         fill
         priority
+        loading="eager"
         sizes="100vw"
         className="object-cover"
       />
