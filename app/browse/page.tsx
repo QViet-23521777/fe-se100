@@ -11,6 +11,7 @@ import {
   hasGenre,
   type SteamAppStoreDetails,
 } from "@/lib/steam-store";
+import { applyStorePromotionsToUsd, fetchActiveStorePromotions, type StorePromotion } from "@/lib/store-promotions";
 
 export const dynamic = "force-dynamic";
 
@@ -117,7 +118,11 @@ function hashToUnit(value: string) {
   return hash / 0xffffffff;
 }
 
-function toPriceLabel(details: SteamAppStoreDetails | null, fallbackUsd: number) {
+function toPriceLabel(
+  details: SteamAppStoreDetails | null,
+  fallbackUsd: number,
+  storePromos: StorePromotion[]
+) {
   if (details?.is_free) return { price: "Free", originalPrice: undefined, discount: undefined };
 
   const discountPercent = details?.price_overview?.discount_percent ?? 0;
@@ -127,15 +132,35 @@ function toPriceLabel(details: SteamAppStoreDetails | null, fallbackUsd: number)
   const finalUsd = centsToUsd(details?.price_overview?.final);
   const initialUsd = centsToUsd(details?.price_overview?.initial);
 
-  const price = finalFormatted || (typeof finalUsd === "number" ? formatUsd(finalUsd) : formatUsd(fallbackUsd));
-  const originalPrice =
+  const basePriceUsd = typeof finalUsd === "number" ? finalUsd : fallbackUsd;
+  const baseOriginalUsd =
+    discountPercent > 0 && typeof initialUsd === "number" ? initialUsd : undefined;
+
+  const basePriceLabel = finalFormatted || formatUsd(basePriceUsd);
+  const baseOriginalLabel =
     discountPercent > 0
-      ? initialFormatted || (typeof initialUsd === "number" ? formatUsd(initialUsd) : undefined)
+      ? initialFormatted || (typeof baseOriginalUsd === "number" ? formatUsd(baseOriginalUsd) : undefined)
       : undefined;
 
+  const storeApplied = applyStorePromotionsToUsd(basePriceUsd, storePromos);
+  if (storeApplied.discountLabel && storeApplied.priceUsd < basePriceUsd) {
+    const originalUsd = baseOriginalUsd ?? basePriceUsd;
+    const totalPercent =
+      originalUsd > 0 ? Math.round((1 - storeApplied.priceUsd / originalUsd) * 100) : discountPercent;
+    const discountLabel = storeApplied.discountLabel.startsWith("-$")
+      ? storeApplied.discountLabel
+      : `-${totalPercent}%`;
+
+    return {
+      price: formatUsd(storeApplied.priceUsd),
+      originalPrice: baseOriginalLabel ?? formatUsd(originalUsd),
+      discount: discountLabel,
+    };
+  }
+
   return {
-    price,
-    originalPrice,
+    price: basePriceLabel,
+    originalPrice: baseOriginalLabel,
     discount: discountPercent > 0 ? `-${discountPercent}%` : undefined,
   };
 }
@@ -184,6 +209,7 @@ export default async function BrowsePage({
 
   const limit = 24;
   const hasFilter = Boolean(genre || category);
+  const storePromos = await fetchActiveStorePromotions();
 
   let apiHadResults = false;
   let cards: BrowseCard[] = [];
@@ -198,9 +224,22 @@ export default async function BrowsePage({
 
     apiHadResults = steamApps.length > 0;
     cards = steamApps.map((app) => ({
+      ...(storePromos.length
+        ? (() => {
+            const base = pseudoOriginalPrice(app.steamAppId);
+            const applied = applyStorePromotionsToUsd(base, storePromos);
+            if (applied.discountLabel && applied.priceUsd < base) {
+              return {
+                price: formatUsd(applied.priceUsd),
+                originalPrice: formatUsd(base),
+                discount: applied.discountLabel,
+              };
+            }
+            return { price: formatUsd(base) };
+          })()
+        : { price: formatUsd(pseudoOriginalPrice(app.steamAppId)) }),
       steamAppId: app.steamAppId,
       title: app.name,
-      price: formatUsd(pseudoOriginalPrice(app.steamAppId)),
       image: steamHeaderUrl(app),
     }));
   } else {
@@ -239,7 +278,7 @@ export default async function BrowsePage({
         if (category && !matchesCategoryFilter(details, category)) continue;
 
         const fallback = pseudoOriginalPrice(app.steamAppId);
-        const pricing = toPriceLabel(details, fallback);
+        const pricing = toPriceLabel(details, fallback, storePromos);
 
         cards.push({
           steamAppId: app.steamAppId,

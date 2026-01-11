@@ -41,8 +41,11 @@ const socials = [
 export default function CheckoutPage() {
   const router = useRouter();
   const { token } = useAuth();
-  const { cart, subtotalCents, clearCart } = useStore();
+  const { cart, subtotalCents, clearCart, promoCode, promoPreview, promoError } = useStore();
   const subtotal = subtotalCents / 100;
+  const discountCents = promoPreview?.discountCents ?? 0;
+  const totalCents = promoPreview?.totalCents ?? subtotalCents;
+  const total = totalCents / 100;
 
   const [mounted, setMounted] = useState(false);
   const [method, setMethod] = useState<PaymentBrand>("visa");
@@ -113,7 +116,11 @@ export default function CheckoutPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ paymentMethod, items }),
+        body: JSON.stringify({
+          paymentMethod,
+          items,
+          promoCode: promoCode.trim() ? promoCode.trim() : undefined,
+        }),
       });
 
       const data = (await res.json().catch(() => null)) as any;
@@ -205,10 +212,13 @@ export default function CheckoutPage() {
 
           <OrderSummary
             subtotal={subtotal}
+            discount={discountCents / 100}
+            total={total}
             canConfirm={canConfirm}
             processing={processing}
             onConfirm={handleConfirm}
             cart={cart}
+            promoError={promoError}
             message={message}
           />
         </div>
@@ -336,28 +346,34 @@ function Gallery() {
 
 function OrderSummary({
   subtotal,
+  discount,
+  total,
   canConfirm,
   processing,
   onConfirm,
   cart,
+  promoError,
   message,
 }: {
   subtotal: number;
+  discount: number;
+  total: number;
   canConfirm: boolean;
   processing: boolean;
   onConfirm: () => void;
   cart: CartLine[];
+  promoError?: string | null;
   message: Message | null;
 }) {
   return (
     <aside className="space-y-4 rounded-[18px] bg-gradient-to-b from-white/10 to-black/20 p-6 shadow-2xl">
       <h2 className="text-2xl font-semibold">Order Summary</h2>
       <SummaryRow label="Subtotal" value={formatCurrency(subtotal)} />
-      <SummaryRow label="Discount" value="$0.00" />
+      <SummaryRow label="Discount" value={discount > 0 ? `-$${discount.toFixed(2)}` : "$0.00"} />
       <div className="h-px w-full bg-white/20" />
       <div className="flex items-center justify-between text-xl font-semibold">
         <span>Total</span>
-        <span>{formatCurrency(subtotal)}</span>
+        <span>{formatCurrency(total)}</span>
       </div>
 
       <div className="rounded-[12px] border border-white/10 bg-white/5 p-4 text-sm text-white/80">
@@ -379,6 +395,12 @@ function OrderSummary({
           </ul>
         )}
       </div>
+
+      {promoError ? (
+        <div className="rounded-[10px] border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {promoError}
+        </div>
+      ) : null}
 
       {message ? (
         <div

@@ -225,7 +225,13 @@ export default function AdminAccountsPage() {
       key: "promos",
       title: "Manage Promo Codes",
       subtitle: "Create and manage promotions",
-      href: "/admin/promotions",
+      href: "/user/manage-promos",
+    },
+    {
+      key: "manage-orders",
+      title: "Manage Orders",
+      subtitle: "View customer purchases",
+      href: "/user/manage-orders",
     },
   ];
 

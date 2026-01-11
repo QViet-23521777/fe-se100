@@ -199,15 +199,17 @@ export default function ProfilePage() {
     if (user?.accountType === "admin") {
       return [
         { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
-        { title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/admin/accounts" },
+        { title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/user/manage-accounts" },
         { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
-        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/admin/promotions" },
+        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
+        { title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders" },
       ];
     }
     if (user?.accountType === "publisher") {
       return [
         { title: "Personal Information", subtitle: "Modify Your Personal Information", href: "/user/profile" },
         { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
+        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
       ];
     }
     return [
