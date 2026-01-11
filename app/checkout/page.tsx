@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { TopBar } from "@/components/TopBar";
 import { useStore, type CartLine } from "@/app/context/StoreContext";
@@ -40,7 +41,7 @@ const socials = [
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { cart, subtotalCents, clearCart, promoCode, promoPreview, promoError } = useStore();
   const subtotal = subtotalCents / 100;
   const discountCents = promoPreview?.discountCents ?? 0;
@@ -52,6 +53,8 @@ export default function CheckoutPage() {
   const [card, setCard] = useState<CardInfo>(initialCard);
   const [message, setMessage] = useState<Message | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const [usingSavedCard, setUsingSavedCard] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
@@ -60,11 +63,47 @@ export default function CheckoutPage() {
     if (!token) router.replace(`/user/login?next=${encodeURIComponent("/checkout")}`);
   }, [mounted, router, token]);
 
-  const canConfirm = cart.length > 0 && !processing;
+  const isCustomer = user?.accountType === "customer";
+  const canConfirm = cart.length > 0 && !processing && isCustomer;
   const isCard = method !== "paypal";
+
+  const cardValidation = useMemo(() => {
+    if (!isCard) {
+      return {
+        isValid: true,
+        errors: { holder: "", number: "", expiry: "", cvv: "" } satisfies Record<keyof CardInfo, string>,
+      };
+    }
+
+    if (usingSavedCard) {
+      return {
+        isValid: true,
+        errors: { holder: "", number: "", expiry: "", cvv: "" } satisfies Record<keyof CardInfo, string>,
+      };
+    }
+
+    const errors = { holder: "", number: "", expiry: "", cvv: "" } as Record<keyof CardInfo, string>;
+
+    if (!card.holder.trim()) errors.holder = "Enter the card holder name.";
+
+    const number = digitsOnly(card.number);
+    if (!number) errors.number = "Enter the card number.";
+    else if (!luhnCheck(number)) errors.number = "Card number looks invalid.";
+
+    if (!card.expiry.trim()) errors.expiry = "Enter expiry date.";
+    else if (!isValidExpiry(card.expiry)) errors.expiry = "Expiry must be in the future (MM/YY).";
+
+    const cvv = digitsOnly(card.cvv);
+    if (!cvv) errors.cvv = "Enter CVV.";
+    else if (cvv.length < 3 || cvv.length > 4) errors.cvv = "CVV must be 3-4 digits.";
+
+    const isValid = Object.values(errors).every((v) => !v);
+    return { isValid, errors };
+  }, [card.cvv, card.expiry, card.holder, card.number, isCard, usingSavedCard]);
 
   const handleConfirm = async () => {
     setMessage(null);
+    setAttemptedSubmit(true);
     if (cart.length === 0) {
       setMessage({ type: "error", text: "Your cart is empty." });
       return;
@@ -73,25 +112,23 @@ export default function CheckoutPage() {
       router.replace(`/user/login?next=${encodeURIComponent("/checkout")}`);
       return;
     }
+    if (!isCustomer) {
+      setMessage({
+        type: "error",
+        text: "Only customer accounts can place orders. Please log in with a customer account.",
+      });
+      return;
+    }
 
-    if (isCard) {
-      const number = digitsOnly(card.number);
-      if (!card.holder.trim()) {
-        setMessage({ type: "error", text: "Enter the card holder name." });
-        return;
-      }
-      if (!luhnCheck(number)) {
-        setMessage({ type: "error", text: "Card number looks invalid." });
-        return;
-      }
-      if (!isValidExpiry(card.expiry)) {
-        setMessage({ type: "error", text: "Expiry must be in the future (MM/YY)." });
-        return;
-      }
-      if (card.cvv.trim().length < 3 || card.cvv.trim().length > 4) {
-        setMessage({ type: "error", text: "CVV must be 3-4 digits." });
-        return;
-      }
+    if (isCard && !cardValidation.isValid) {
+      const firstError =
+        cardValidation.errors.holder ||
+        cardValidation.errors.number ||
+        cardValidation.errors.expiry ||
+        cardValidation.errors.cvv ||
+        "Please check your card details.";
+      setMessage({ type: "error", text: firstError });
+      return;
     }
 
     setProcessing(true);
@@ -166,7 +203,7 @@ export default function CheckoutPage() {
         <div className="flex w-full flex-col gap-10 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
           <TopBar />
           <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/70 shadow-xl">
-            Loading checkout…
+            Loading checkout?
           </div>
         </div>
       </div>
@@ -179,7 +216,7 @@ export default function CheckoutPage() {
         <div className="flex w-full flex-col gap-10 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
           <TopBar />
           <div className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-6 text-white/70 shadow-xl">
-            Redirecting to login…
+            Redirecting to login?
           </div>
         </div>
       </div>
@@ -191,7 +228,18 @@ export default function CheckoutPage() {
       <div className="flex w-full flex-col gap-10 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
         <TopBar />
 
-        <h1 className="text-4xl font-bold">Checkout</h1>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-4xl font-bold">Checkout</h1>
+            <p className="text-sm text-white/70">Review your order and confirm payment.</p>
+          </div>
+          <Link
+            href="/cart"
+            className="inline-flex w-fit items-center justify-center rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10"
+          >
+            Back to Cart
+          </Link>
+        </div>
 
         <div className="grid gap-8 lg:grid-cols-[1.5fr_0.8fr]">
           <div className="space-y-6">
@@ -203,11 +251,16 @@ export default function CheckoutPage() {
               isCard={isCard}
               onUseSavedVisa={() => {
                 setMethod("visa");
-                setCard((prev) => ({ ...prev, number: savedVisa }));
+                setUsingSavedCard(true);
+                setCard((prev) => ({ ...prev, number: savedVisa, holder: "", expiry: "", cvv: "" }));
               }}
               onUsePaypal={() => setMethod("paypal")}
+              showErrors={attemptedSubmit}
+              errors={cardValidation.errors}
+              usingSavedCard={usingSavedCard}
+              onUsingSavedCard={setUsingSavedCard}
             />
-            <Gallery />
+            <MediaStrip />
           </div>
 
           <OrderSummary
@@ -218,8 +271,11 @@ export default function CheckoutPage() {
             processing={processing}
             onConfirm={handleConfirm}
             cart={cart}
+            promoCode={promoCode}
+            promoPreview={promoPreview}
             promoError={promoError}
             message={message}
+            isCustomer={isCustomer}
           />
         </div>
 
@@ -235,6 +291,10 @@ function PaymentSection({
   onSelectMethod,
   onCardChange,
   isCard,
+  showErrors,
+  errors,
+  usingSavedCard,
+  onUsingSavedCard,
   onUseSavedVisa,
   onUsePaypal,
 }: {
@@ -243,6 +303,10 @@ function PaymentSection({
   onSelectMethod: (m: PaymentBrand) => void;
   onCardChange: (card: CardInfo) => void;
   isCard: boolean;
+  showErrors: boolean;
+  errors: Record<keyof CardInfo, string>;
+  usingSavedCard: boolean;
+  onUsingSavedCard: (value: boolean) => void;
   onUseSavedVisa: () => void;
   onUsePaypal: () => void;
 }) {
@@ -260,45 +324,91 @@ function PaymentSection({
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <PaymentCard brand="visa" active={method === "visa"} onSelect={onSelectMethod} />
+        <PaymentCard
+          brand="visa"
+          active={method === "visa"}
+          onSelect={(brand) => {
+            onSelectMethod(brand);
+            onUsingSavedCard(false);
+          }}
+        />
         <PaymentCard
           brand="mastercard"
           active={method === "mastercard"}
-          onSelect={onSelectMethod}
+          onSelect={(brand) => {
+            onSelectMethod(brand);
+            onUsingSavedCard(false);
+          }}
         />
-        <PaymentCard brand="paypal" active={method === "paypal"} onSelect={onSelectMethod} />
+        <PaymentCard
+          brand="paypal"
+          active={method === "paypal"}
+          onSelect={(brand) => {
+            onSelectMethod(brand);
+            onUsingSavedCard(false);
+          }}
+        />
         <PaymentCard
           brand="payoneer"
           active={method === "payoneer"}
-          onSelect={onSelectMethod}
+          onSelect={(brand) => {
+            onSelectMethod(brand);
+            onUsingSavedCard(false);
+          }}
         />
       </div>
 
       <div className="space-y-4">
+        {usingSavedCard && isCard ? (
+          <div className="rounded-[12px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
+            Using saved card <span className="font-semibold text-white">{savedVisa}</span>.{" "}
+            <button
+              type="button"
+              onClick={() => {
+                onUsingSavedCard(false);
+                onCardChange(initialCard);
+              }}
+              className="text-cyan-300 underline underline-offset-2"
+            >
+              Use a different card
+            </button>
+            .
+          </div>
+        ) : null}
         <Input
           placeholder="Card Holder Name"
           value={card.holder}
           onChange={handleInput("holder")}
-          disabled={!isCard}
+          disabled={!isCard || usingSavedCard}
+          error={showErrors ? errors.holder : ""}
         />
         <Input
           placeholder="Card Number"
           value={card.number}
-          onChange={(val) => handleInput("number")(val.replace(/[^\d\s*]/g, ""))}
-          disabled={!isCard}
+          onChange={(val) => {
+            onUsingSavedCard(false);
+            handleInput("number")(formatCardNumber(val));
+          }}
+          disabled={!isCard || usingSavedCard}
+          inputMode="numeric"
+          error={showErrors ? errors.number : ""}
         />
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
             placeholder="Expiry Date (MM/YY)"
             value={card.expiry}
-            onChange={handleInput("expiry")}
-            disabled={!isCard}
+            onChange={(val) => handleInput("expiry")(formatExpiry(val))}
+            disabled={!isCard || usingSavedCard}
+            inputMode="numeric"
+            error={showErrors ? errors.expiry : ""}
           />
           <Input
             placeholder="CVV"
             value={card.cvv}
             onChange={(val) => handleInput("cvv")(digitsOnly(val).slice(0, 4))}
-            disabled={!isCard}
+            disabled={!isCard || usingSavedCard}
+            inputMode="numeric"
+            error={showErrors ? errors.cvv : ""}
           />
         </div>
       </div>
@@ -344,6 +454,61 @@ function Gallery() {
   );
 }
 
+function MediaStrip() {
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollBy = (dx: number) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dx, behavior: "smooth" });
+  };
+
+  return (
+    <section className="space-y-3 rounded-[20px]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-xs font-semibold text-white">
+            HD
+          </div>
+          <span className="text-sm text-white/80">Trailer & Screenshots</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => scrollBy(-360)}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15"
+            aria-label="Scroll left"
+          >
+            <span aria-hidden="true">&lt;</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollBy(360)}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15"
+            aria-label="Scroll right"
+          >
+            <span aria-hidden="true">&gt;</span>
+          </button>
+        </div>
+      </div>
+
+      <div
+        ref={scrollerRef}
+        className="flex items-center gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {gallery.map((src, idx) => (
+          <img
+            key={`${src}-${idx}`}
+            src={src}
+            alt=""
+            className="h-24 w-28 shrink-0 rounded-lg object-cover opacity-80 transition hover:opacity-100"
+            loading="lazy"
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
 function OrderSummary({
   subtotal,
   discount,
@@ -352,8 +517,11 @@ function OrderSummary({
   processing,
   onConfirm,
   cart,
+  promoCode,
+  promoPreview,
   promoError,
   message,
+  isCustomer,
 }: {
   subtotal: number;
   discount: number;
@@ -362,14 +530,24 @@ function OrderSummary({
   processing: boolean;
   onConfirm: () => void;
   cart: CartLine[];
+  promoCode: string;
+  promoPreview: { code?: string; discountCents: number; totalCents: number } | null;
   promoError?: string | null;
   message: Message | null;
+  isCustomer: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const promoLabel = (promoPreview?.code || promoCode || "").trim();
+  const visibleItems = expanded ? cart : cart.slice(0, 4);
+
   return (
     <aside className="space-y-4 rounded-[18px] bg-gradient-to-b from-white/10 to-black/20 p-6 shadow-2xl">
       <h2 className="text-2xl font-semibold">Order Summary</h2>
       <SummaryRow label="Subtotal" value={formatCurrency(subtotal)} />
-      <SummaryRow label="Discount" value={discount > 0 ? `-$${discount.toFixed(2)}` : "$0.00"} />
+      <SummaryRow
+        label={promoLabel ? `Discount (${promoLabel})` : "Discount"}
+        value={discount > 0 ? `-$${discount.toFixed(2)}` : "$0.00"}
+      />
       <div className="h-px w-full bg-white/20" />
       <div className="flex items-center justify-between text-xl font-semibold">
         <span>Total</span>
@@ -380,21 +558,48 @@ function OrderSummary({
         {cart.length === 0 ? (
           <p>Your cart is empty.</p>
         ) : (
-          <ul className="space-y-2">
-            {cart.slice(0, 4).map((line) => (
-              <li key={line.id} className="flex items-center justify-between gap-3">
-                <span className="truncate text-white/85">{line.name}</span>
-                <span className="font-martian-mono text-xs text-white/70">
-                  {line.quantity} × {line.priceLabel ?? "$--"}
-                </span>
-              </li>
-            ))}
+          <div className="space-y-3">
+            <ul className="space-y-2">
+              {visibleItems.map((line) => {
+                const href = toProductHref(line);
+                const unitCents = typeof line.unitPriceCents === "number" ? line.unitPriceCents : null;
+                const lineTotalCents = unitCents === null ? null : unitCents * line.quantity;
+
+                return (
+                  <li key={line.id} className="flex items-center justify-between gap-3">
+                    <Link
+                      href={href}
+                      className="truncate text-white/85 hover:text-white hover:underline hover:underline-offset-2"
+                      title={line.name}
+                    >
+                      {line.name}
+                    </Link>
+                    <span className="font-martian-mono text-xs text-white/70">
+                      {line.quantity} x {line.priceLabel ?? "$--"}
+                      {lineTotalCents !== null ? ` = ${formatCurrency(lineTotalCents / 100)}` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
             {cart.length > 4 ? (
-              <li className="text-xs text-white/60">+ {cart.length - 4} more items</li>
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="text-left text-xs text-cyan-200/90 hover:text-cyan-200"
+              >
+                {expanded ? "Show fewer items" : `Show all items (${cart.length})`}
+              </button>
             ) : null}
-          </ul>
+          </div>
         )}
       </div>
+
+      {!isCustomer ? (
+        <div className="rounded-[10px] border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          Checkout is disabled for this account type. Log in with a customer account to place orders.
+        </div>
+      ) : null}
 
       {promoError ? (
         <div className="rounded-[10px] border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -427,7 +632,6 @@ function OrderSummary({
     </aside>
   );
 }
-
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between text-base text-white/80">
@@ -501,20 +705,30 @@ function Input({
   value,
   onChange,
   disabled,
+  inputMode,
+  error,
 }: {
   placeholder: string;
   value: string;
   onChange: (val: string) => void;
   disabled?: boolean;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  error?: string;
 }) {
   return (
-    <input
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={disabled}
-      className="w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30 disabled:cursor-not-allowed disabled:opacity-60"
-    />
+    <div className="space-y-1">
+      <input
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        inputMode={inputMode}
+        className={`w-full rounded-[10px] bg-[#535c91] px-4 py-4 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/30 disabled:cursor-not-allowed disabled:opacity-60 ${
+          error ? "ring-2 ring-red-400/60" : ""
+        }`}
+      />
+      {error ? <p className="text-xs text-red-200/90">{error}</p> : null}
+    </div>
   );
 }
 
@@ -527,8 +741,8 @@ function Footer() {
           <span className="text-xl font-semibold">GameVerse</span>
         </div>
         <div className="max-w-xl space-y-2 text-sm text-white/80">
-          GameVerse Г?" Where every gamer levels up! From epic AAA adventures to indie gems, grab
-          the hottest deals on PC, Xbox, PlayStation & Nintendo. Play more, pay less. dYZr
+          GameVerse — Where every gamer levels up! From epic AAA adventures to indie gems, grab the
+          hottest deals on PC, Xbox, PlayStation & Nintendo. Play more, pay less.
         </div>
         <div className="grid grid-cols-2 gap-10 text-sm">
           <div className="space-y-2">
@@ -568,6 +782,25 @@ function Footer() {
 
 function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
+}
+
+function formatCardNumber(value: string) {
+  const digits = digitsOnly(value).slice(0, 19);
+  return digits.replace(/(.{4})/g, "$1 ").trim();
+}
+
+function formatExpiry(value: string) {
+  const digits = digitsOnly(value).slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+}
+
+function toProductHref(line: CartLine) {
+  if (typeof line.steamAppId === "number" && Number.isFinite(line.steamAppId)) {
+    return `/product/${Math.floor(line.steamAppId)}`;
+  }
+  if (line.slug) return `/product/${line.slug}`;
+  return "/browse";
 }
 
 function luhnCheck(value: string) {
