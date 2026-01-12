@@ -8,7 +8,7 @@ import { useStore } from "@/app/context/StoreContext";
 import { useAuth } from "@/app/context/AuthContext";
 
 type Props = {
-  active?: "home" | "browse" | "publisher" | "about";
+  active?: "home" | "browse" | "news" | "publisher" | "about";
 };
 
 const logo = "/assets/figma-logo.svg";

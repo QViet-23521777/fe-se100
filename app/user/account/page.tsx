@@ -182,7 +182,7 @@ export default function AccountOptionsPage() {
           key: "admin-accounts",
           title: "Manage Accounts",
           subtitle: "Create or edit admin/publisher accounts",
-          href: "/admin/accounts",
+          href: "/user/manage-accounts",
           icon: (props) => <UserIcon {...props} />,
         },
         {
@@ -196,7 +196,21 @@ export default function AccountOptionsPage() {
           key: "promos",
           title: "Manage Promo Codes",
           subtitle: "Create and manage promotions",
-          href: "/admin/promotions",
+          href: "/user/manage-promos",
+          icon: (props) => <WalletIcon {...props} />,
+        },
+        {
+          key: "manage-orders",
+          title: "Manage Orders",
+          subtitle: "View customer purchases",
+          href: "/user/manage-orders",
+          icon: (props) => <CartIcon {...props} />,
+        },
+        {
+          key: "manage-refunds",
+          title: "Manage Refunds",
+          subtitle: "Review and process refunds",
+          href: "/user/manage-refunds",
           icon: (props) => <WalletIcon {...props} />,
         },
       ];
@@ -217,6 +231,13 @@ export default function AccountOptionsPage() {
           subtitle: "Create or edit games",
           href: "/user/manage-games",
           icon: (props) => <CartIcon {...props} />,
+        },
+        {
+          key: "promos",
+          title: "Manage Promo Codes",
+          subtitle: "Create and manage promotions",
+          href: "/user/manage-promos",
+          icon: (props) => <WalletIcon {...props} />,
         },
       ];
     }

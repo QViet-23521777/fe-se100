@@ -13,6 +13,7 @@ import {
   fetchSteamAppDetailsBatch,
   type SteamAppStoreDetails,
 } from "@/lib/steam-store";
+import { applyStorePromotionsToUsd, fetchActiveStorePromotions, type StorePromotion } from "@/lib/store-promotions";
 
 export const revalidate = 300;
 
@@ -104,6 +105,14 @@ function pseudoDiscountPercent(steamAppId: number) {
   return DISCOUNT_POINTS[idx];
 }
 
+function applyStorePromoToUsd(priceUsd: number, promos: StorePromotion[]) {
+  if (!Array.isArray(promos) || promos.length === 0) return null;
+  const applied = applyStorePromotionsToUsd(priceUsd, promos);
+  if (!applied.discountLabel) return null;
+  if (!Number.isFinite(applied.priceUsd) || applied.priceUsd >= priceUsd) return null;
+  return applied;
+}
+
 type ScoredSteamApp = {
   app: SteamApp;
   details: SteamAppStoreDetails | null;
@@ -149,25 +158,31 @@ function scoreSteamApp(app: SteamApp, details: SteamAppStoreDetails | null): Sco
 
 function toCarouselItemFromScore(
   scored: ScoredSteamApp,
-  kind: "default" | "deal" = "default"
+  kind: "default" | "deal" = "default",
+  storePromos: StorePromotion[] = []
 ): CarouselItem {
   const title = scored.details?.name?.trim() || scored.app.name;
+  const storeApplied = applyStorePromoToUsd(scored.price, storePromos);
+  const effectivePrice = storeApplied ? storeApplied.priceUsd : scored.price;
   if (kind === "deal") {
     const original =
       typeof scored.originalPrice === "number"
         ? scored.originalPrice
         : pseudoOriginalPrice(scored.app.steamAppId);
     const price =
-      typeof scored.price === "number"
-        ? scored.price
+      typeof effectivePrice === "number"
+        ? effectivePrice
         : Math.max(0, Math.round(original * (100 - scored.discountPercent)) / 100);
+
+    const discountPercent =
+      original > 0 ? Math.round(((original - price) / original) * 100) : scored.discountPercent;
 
     return {
       id: String(scored.app.steamAppId),
       title,
       price,
       originalPrice: original,
-      discountPercent: scored.discountPercent || undefined,
+      discountPercent: discountPercent > 0 ? discountPercent : undefined,
       imageSrc: scored.imageSrc,
     };
   }
@@ -175,17 +190,20 @@ function toCarouselItemFromScore(
   return {
     id: String(scored.app.steamAppId),
     title,
-    price: Number.isFinite(scored.price) ? scored.price : pseudoOriginalPrice(scored.app.steamAppId),
+    price: Number.isFinite(effectivePrice) ? effectivePrice : pseudoOriginalPrice(scored.app.steamAppId),
     imageSrc: scored.imageSrc,
   };
 }
 
 function toGameItemFromScore(
   scored: ScoredSteamApp,
-  options: { cta: string; kind?: "default" | "deal" }
+  options: { cta: string; kind?: "default" | "deal" },
+  storePromos: StorePromotion[] = []
 ): GameItem {
   const safePrice = Number.isFinite(scored.price) ? scored.price : pseudoOriginalPrice(scored.app.steamAppId);
-  const priceLabel = scored.details?.is_free ? "Free" : formatUsd(safePrice);
+  const storeApplied = applyStorePromoToUsd(safePrice, storePromos);
+  const effectivePrice = storeApplied ? storeApplied.priceUsd : safePrice;
+  const priceLabel = scored.details?.is_free ? "Free" : formatUsd(effectivePrice);
   const title = scored.details?.name?.trim() || scored.app.name;
 
   if (options.kind === "deal") {
@@ -193,13 +211,22 @@ function toGameItemFromScore(
       typeof scored.originalPrice === "number"
         ? scored.originalPrice
         : pseudoOriginalPrice(scored.app.steamAppId);
+    const discountPercent =
+      originalPrice > 0 ? Math.round(((originalPrice - effectivePrice) / originalPrice) * 100) : scored.discountPercent;
     return {
       steamAppId: scored.app.steamAppId,
       title,
-      price: scored.details?.is_free ? "Free" : formatUsd(safePrice),
+      price: scored.details?.is_free ? "Free" : formatUsd(effectivePrice),
       originalPrice: formatUsd(originalPrice),
       image: scored.imageSrc,
-      tag: scored.discountPercent ? `-${scored.discountPercent}%` : undefined,
+      tag:
+        scored.details?.is_free
+          ? undefined
+          : storeApplied?.discountLabel?.startsWith("-$")
+            ? storeApplied.discountLabel
+            : discountPercent > 0
+              ? `-${discountPercent}%`
+              : undefined,
       cta: options.cta,
     };
   }
@@ -774,6 +801,7 @@ function Hero({ featured }: { featured: GameItem }) {
         alt={featured.title}
         fill
         priority
+        loading="eager"
         sizes="100vw"
         className="object-cover"
       />
@@ -839,6 +867,7 @@ export default async function Home() {
   const perRow = 10;
   const desiredTotal = 1 + perRow * 4;
   const listRevalidateSeconds = 60 * 5;
+  const storePromos = await fetchActiveStorePromotions();
 
   const apiAppPool: SteamApp[] = [];
   const seenApiIds = new Set<number>();
@@ -902,6 +931,38 @@ export default async function Home() {
       return b.recommendations - a.recommendations;
     });
 
+  // If Steam doesn't return enough discounted titles, fall back to popular items and
+  // synthesize a reasonable discount so the row still shows real games instead of
+  // static placeholders.
+  const dealCandidates = [...dealsPool];
+  if (dealCandidates.length < perRow) {
+    const filler = scoredUnique
+      .filter((item) => !item.comingSoon)
+      .sort((a, b) => b.recommendations - a.recommendations)
+      .map((item) => {
+        const original =
+          typeof item.originalPrice === "number"
+            ? item.originalPrice
+            : pseudoOriginalPrice(item.app.steamAppId);
+        const price =
+          typeof item.price === "number" && item.price > 0
+            ? item.price
+            : Math.max(0, Math.round(original * (100 - pseudoDiscountPercent(item.app.steamAppId))) / 100);
+        const discount =
+          item.discountPercent && item.discountPercent > 0
+            ? item.discountPercent
+            : Math.max(1, pseudoDiscountPercent(item.app.steamAppId));
+
+        return {
+          ...item,
+          originalPrice: original,
+          price,
+          discountPercent: discount,
+        };
+      });
+    dealCandidates.push(...filler);
+  }
+
   const upcomingPool = scoredUnique
     .filter((item) => item.comingSoon)
     .sort((a, b) => b.recommendations - a.recommendations);
@@ -921,7 +982,7 @@ export default async function Home() {
     return picked;
   }
 
-  const bestDealPicked = takeUnique(dealsPool, perRow);
+  const bestDealPicked = takeUnique(dealCandidates, perRow);
   const bestsellerPicked = takeUnique(popularPool, perRow);
   const trendingPicked = takeUnique(popularPool.slice(perRow), perRow);
   const upcomingBase = takeUnique(upcomingPool, perRow);
@@ -937,7 +998,7 @@ export default async function Home() {
     null;
 
   const featuredItem = featuredScored
-    ? toGameItemFromScore(featuredScored, { cta: "Buy Now" })
+    ? toGameItemFromScore(featuredScored, { cta: "Buy Now" }, storePromos)
     : {
         title: "The Last of Us Part II",
         price: "$49.99",
@@ -994,22 +1055,22 @@ export default async function Home() {
   }
 
   const upcomingItems = fillToLength(
-    upcomingPicked.map((item) => toCarouselItemFromScore(item)),
+    upcomingPicked.map((item) => toCarouselItemFromScore(item, "default", storePromos)),
     fallbackUpcoming,
     perRow
   );
   const trendingItems = fillToLength(
-    trendingPicked.map((item) => toCarouselItemFromScore(item)),
+    trendingPicked.map((item) => toCarouselItemFromScore(item, "default", storePromos)),
     fallbackTrending,
     perRow
   );
   const bestsellerItems = fillToLength(
-    bestsellerPicked.map((item) => toCarouselItemFromScore(item)),
+    bestsellerPicked.map((item) => toCarouselItemFromScore(item, "default", storePromos)),
     fallbackBestsellers,
     perRow
   );
   const bestDealItems = fillToLength(
-    bestDealPicked.map((item) => toCarouselItemFromScore(item, "deal")),
+    bestDealPicked.map((item) => toCarouselItemFromScore(item, "deal", storePromos)),
     fallbackDeals,
     perRow
   );

@@ -11,6 +11,7 @@ import {
   hasGenre,
   type SteamAppStoreDetails,
 } from "@/lib/steam-store";
+import { applyStorePromotionsToUsd, fetchActiveStorePromotions, type StorePromotion } from "@/lib/store-promotions";
 
 export const dynamic = "force-dynamic";
 
@@ -23,11 +24,49 @@ type BrowseCard = {
   image: string;
 };
 
+type SortKey =
+  | "relevance"
+  | "popular"
+  | "price_asc"
+  | "price_desc"
+  | "discount_desc"
+  | "name_asc";
+
+type PlatformFilter = "" | "windows" | "mac" | "linux";
+
+type CardWithMeta = BrowseCard & {
+  effectiveUsd: number;
+  originalUsd?: number;
+  discountPercent: number;
+  hasDeal: boolean;
+  recommendationsTotal: number;
+  titleSort: string;
+};
+
 const heroBanner = "/assets/6ae5fe37d055bdf5609d1bde8dd81809fa9e9ba3.png";
 
 const PRICE_POINTS = [
   9.99, 14.99, 19.99, 24.99, 29.99, 39.99, 49.99, 59.99, 69.99,
 ];
+
+const GENRE_OPTIONS = [
+  "Action",
+  "Adventure",
+  "RPG",
+  "Strategy",
+  "Simulation",
+  "Indie",
+  "Casual",
+  "Sports",
+  "Racing",
+  "Arcade",
+  "Fighting",
+  "Shooter",
+  "Horror",
+  "Puzzle",
+] as const;
+
+const CATEGORY_OPTIONS = ["Single-Player", "VR", "FPS", "Multi-player"] as const;
 
 function formatUsd(price: number) {
   return `$${price.toFixed(2)}`;
@@ -109,6 +148,43 @@ function readParam(params: SearchParams, key: string) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function normalizeSort(value: string): SortKey {
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case "popular":
+    case "price_asc":
+    case "price_desc":
+    case "discount_desc":
+    case "name_asc":
+      return normalized as SortKey;
+    case "relevance":
+    default:
+      return "relevance";
+  }
+}
+
+function normalizePlatform(value: string): PlatformFilter {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "windows" || normalized === "mac" || normalized === "linux") {
+    return normalized;
+  }
+  return "";
+}
+
+function parseFloatParam(value: string | undefined) {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return parsed;
+}
+
+function parseIntParam(value: string | undefined) {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.floor(parsed);
+}
+
 function hashToUnit(value: string) {
   let hash = 0;
   for (let i = 0; i < value.length; i += 1) {
@@ -117,26 +193,83 @@ function hashToUnit(value: string) {
   return hash / 0xffffffff;
 }
 
-function toPriceLabel(details: SteamAppStoreDetails | null, fallbackUsd: number) {
-  if (details?.is_free) return { price: "Free", originalPrice: undefined, discount: undefined };
+function toPriceMeta(
+  details: SteamAppStoreDetails | null,
+  fallbackUsd: number,
+  storePromos: StorePromotion[]
+): {
+  price: string;
+  originalPrice?: string;
+  discount?: string;
+  effectiveUsd: number;
+  originalUsd?: number;
+  discountPercent: number;
+  hasDeal: boolean;
+  knownPrice: boolean;
+} {
+  if (details?.is_free) {
+    return {
+      price: "Free",
+      originalPrice: undefined,
+      discount: undefined,
+      effectiveUsd: 0,
+      originalUsd: undefined,
+      discountPercent: 0,
+      hasDeal: false,
+      knownPrice: true,
+    };
+  }
 
-  const discountPercent = details?.price_overview?.discount_percent ?? 0;
+  const steamDiscountPercent = details?.price_overview?.discount_percent ?? 0;
   const finalFormatted = details?.price_overview?.final_formatted;
   const initialFormatted = details?.price_overview?.initial_formatted;
 
   const finalUsd = centsToUsd(details?.price_overview?.final);
   const initialUsd = centsToUsd(details?.price_overview?.initial);
+  const knownPrice = typeof finalUsd === "number";
 
-  const price = finalFormatted || (typeof finalUsd === "number" ? formatUsd(finalUsd) : formatUsd(fallbackUsd));
-  const originalPrice =
-    discountPercent > 0
-      ? initialFormatted || (typeof initialUsd === "number" ? formatUsd(initialUsd) : undefined)
-      : undefined;
+  const baseFinalUsd = typeof finalUsd === "number" ? finalUsd : fallbackUsd;
+  const baseOriginalUsd =
+    steamDiscountPercent > 0 && typeof initialUsd === "number" ? initialUsd : baseFinalUsd;
+
+  const basePriceLabel = finalFormatted || formatUsd(baseFinalUsd);
+  const baseOriginalLabel =
+    steamDiscountPercent > 0 ? initialFormatted || formatUsd(baseOriginalUsd) : undefined;
+  const baseDiscountLabel = steamDiscountPercent > 0 ? `-${steamDiscountPercent}%` : undefined;
+
+  if (knownPrice) {
+    const storeApplied = applyStorePromotionsToUsd(baseFinalUsd, storePromos);
+    if (storeApplied.discountLabel && storeApplied.priceUsd < baseFinalUsd) {
+      const totalPercent =
+        baseOriginalUsd > 0
+          ? Math.round((1 - storeApplied.priceUsd / baseOriginalUsd) * 100)
+          : steamDiscountPercent;
+      const discountLabel = storeApplied.discountLabel.startsWith("-$")
+        ? storeApplied.discountLabel
+        : `-${totalPercent}%`;
+
+      return {
+        price: formatUsd(storeApplied.priceUsd),
+        originalPrice: baseOriginalLabel ?? formatUsd(baseOriginalUsd),
+        discount: discountLabel,
+        effectiveUsd: storeApplied.priceUsd,
+        originalUsd: baseOriginalUsd,
+        discountPercent: Math.max(0, totalPercent),
+        hasDeal: true,
+        knownPrice: true,
+      };
+    }
+  }
 
   return {
-    price,
-    originalPrice,
-    discount: discountPercent > 0 ? `-${discountPercent}%` : undefined,
+    price: basePriceLabel,
+    originalPrice: baseOriginalLabel,
+    discount: baseDiscountLabel,
+    effectiveUsd: baseFinalUsd,
+    originalUsd: steamDiscountPercent > 0 ? baseOriginalUsd : undefined,
+    discountPercent: Math.max(0, steamDiscountPercent),
+    hasDeal: steamDiscountPercent > 0,
+    knownPrice,
   };
 }
 
@@ -164,6 +297,50 @@ function matchesCategoryFilter(details: SteamAppStoreDetails | null, category: s
   return hasCategory(details ?? undefined, normalized);
 }
 
+function matchesPlatform(details: SteamAppStoreDetails | null, platform: PlatformFilter) {
+  if (!platform) return true;
+  const platforms = details?.platforms;
+  if (!platforms) return false;
+  if (platform === "windows") return Boolean(platforms.windows);
+  if (platform === "mac") return Boolean(platforms.mac);
+  if (platform === "linux") return Boolean(platforms.linux);
+  return true;
+}
+
+function buildBrowseHref(params: {
+  q?: string;
+  genre?: string;
+  category?: string;
+  sort?: SortKey;
+  platform?: PlatformFilter;
+  minPrice?: number;
+  maxPrice?: number;
+  minReviews?: number;
+  deals?: boolean;
+  page?: number;
+}) {
+  const sp = new URLSearchParams();
+  if (params.q) sp.set("q", params.q);
+  if (params.genre) sp.set("genre", params.genre);
+  if (params.category) sp.set("category", params.category);
+  if (params.sort && params.sort !== "relevance") sp.set("sort", params.sort);
+  if (params.platform) sp.set("platform", params.platform);
+  if (typeof params.minPrice === "number" && Number.isFinite(params.minPrice)) {
+    sp.set("minPrice", String(params.minPrice));
+  }
+  if (typeof params.maxPrice === "number" && Number.isFinite(params.maxPrice)) {
+    sp.set("maxPrice", String(params.maxPrice));
+  }
+  if (typeof params.minReviews === "number" && Number.isFinite(params.minReviews)) {
+    sp.set("minReviews", String(params.minReviews));
+  }
+  if (params.deals) sp.set("deals", "1");
+  if (typeof params.page === "number" && params.page > 1) sp.set("page", String(params.page));
+
+  const qs = sp.toString();
+  return qs ? `/browse?${qs}` : "/browse";
+}
+
 export default async function BrowsePage({
   searchParams,
 }: {
@@ -173,6 +350,16 @@ export default async function BrowsePage({
   const q = (readParam(resolvedParams, "q") ?? "").trim();
   const genre = (readParam(resolvedParams, "genre") ?? "").trim();
   const category = (readParam(resolvedParams, "category") ?? "").trim();
+  const sort = normalizeSort(readParam(resolvedParams, "sort") ?? "relevance");
+  const platform = normalizePlatform(readParam(resolvedParams, "platform") ?? "");
+  const minPriceRaw = parseFloatParam(readParam(resolvedParams, "minPrice"));
+  const maxPriceRaw = parseFloatParam(readParam(resolvedParams, "maxPrice"));
+  const minPrice = typeof minPriceRaw === "number" ? Math.max(0, minPriceRaw) : undefined;
+  const maxPrice = typeof maxPriceRaw === "number" ? Math.max(0, maxPriceRaw) : undefined;
+  const minReviewsRaw = parseIntParam(readParam(resolvedParams, "minReviews"));
+  const minReviews = typeof minReviewsRaw === "number" ? Math.max(0, minReviewsRaw) : undefined;
+  const deals = (readParam(resolvedParams, "deals") ?? "").trim();
+  const dealsOnly = deals === "1" || deals.toLowerCase() === "true" || deals.toLowerCase() === "yes";
   const pageRaw = readParam(resolvedParams, "page") ?? "1";
   const pageNumberRaw = Number(pageRaw);
   const page = Number.isFinite(pageNumberRaw) ? Math.max(1, Math.floor(pageNumberRaw)) : 1;
@@ -184,35 +371,125 @@ export default async function BrowsePage({
 
   const limit = 24;
   const hasFilter = Boolean(genre || category);
+  const storePromos = await fetchActiveStorePromotions();
+
+  const needsDetails =
+    hasFilter ||
+    Boolean(platform || dealsOnly) ||
+    typeof minPrice === "number" ||
+    typeof maxPrice === "number" ||
+    typeof minReviews === "number" ||
+    sort !== "relevance";
+
+  const requiresKnownPrice =
+    dealsOnly ||
+    typeof minPrice === "number" ||
+    typeof maxPrice === "number" ||
+    sort === "price_asc" ||
+    sort === "price_desc" ||
+    sort === "discount_desc";
 
   let apiHadResults = false;
-  let cards: BrowseCard[] = [];
+  let cardsMeta: CardWithMeta[] = [];
+  let couldHaveMore = false;
 
   if (!hasFilter) {
-    const skip = (page - 1) * limit;
-    const steamApps = await fetchSteamApps({
-      search: q ? q : undefined,
-      skip,
-      limit,
-    });
+    const skipBase = (page - 1) * limit;
+    const windowSize = needsDetails ? Math.min(96, limit * 4) : limit;
+    const targetCount = sort === "relevance" ? limit : Math.min(limit * 3, 72);
+    const maxWindows = needsDetails ? 2 : 1;
 
-    apiHadResults = steamApps.length > 0;
-    cards = steamApps.map((app) => ({
-      steamAppId: app.steamAppId,
-      title: app.name,
-      price: formatUsd(pseudoOriginalPrice(app.steamAppId)),
-      image: steamHeaderUrl(app),
-    }));
+    for (let windowIndex = 0; windowIndex < maxWindows; windowIndex += 1) {
+      if (cardsMeta.length >= targetCount) break;
+
+      const steamApps = await fetchSteamApps({
+        search: q ? q : undefined,
+        skip: skipBase + windowIndex * windowSize,
+        limit: windowSize,
+      });
+
+      if (steamApps.length > 0) apiHadResults = true;
+      if (steamApps.length === windowSize) couldHaveMore = true;
+      if (steamApps.length === 0) break;
+
+      if (!needsDetails) {
+        cardsMeta = steamApps.map((app) => {
+          const base = pseudoOriginalPrice(app.steamAppId);
+          const applied = applyStorePromotionsToUsd(base, storePromos);
+          const effectiveUsd = applied.discountLabel && applied.priceUsd < base ? applied.priceUsd : base;
+          const hasDeal = Boolean(applied.discountLabel && applied.priceUsd < base);
+          const discountPercent =
+            hasDeal && base > 0 ? Math.max(0, Math.round((1 - effectiveUsd / base) * 100)) : 0;
+
+          return {
+            steamAppId: app.steamAppId,
+            title: app.name,
+            price: formatUsd(effectiveUsd),
+            originalPrice: hasDeal ? formatUsd(base) : undefined,
+            discount: hasDeal ? applied.discountLabel ?? undefined : undefined,
+            image: steamHeaderUrl(app),
+            effectiveUsd,
+            originalUsd: hasDeal ? base : undefined,
+            discountPercent,
+            hasDeal,
+            recommendationsTotal: 0,
+            titleSort: app.name.trim().toLowerCase(),
+          };
+        });
+        couldHaveMore = steamApps.length === windowSize;
+        break;
+      }
+
+      const detailsMap = await fetchSteamAppDetailsBatch(
+        steamApps.map((app) => app.steamAppId),
+        { revalidateSeconds: 60 * 10, concurrency: 6 }
+      );
+
+      for (const app of steamApps) {
+        if (cardsMeta.length >= targetCount) break;
+
+        const details = detailsMap.get(app.steamAppId) ?? null;
+        const fallback = pseudoOriginalPrice(app.steamAppId);
+        const pricing = toPriceMeta(details, fallback, storePromos);
+        const recommendationsTotal = details?.recommendations?.total ?? 0;
+
+        if (requiresKnownPrice && !pricing.knownPrice) continue;
+        if (platform && !matchesPlatform(details, platform)) continue;
+        if (typeof minReviews === "number" && recommendationsTotal < minReviews) continue;
+        if (dealsOnly && !pricing.hasDeal) continue;
+        if (typeof minPrice === "number" && pricing.effectiveUsd < minPrice) continue;
+        if (typeof maxPrice === "number" && pricing.effectiveUsd > maxPrice) continue;
+
+        const title = details?.name?.trim() || app.name;
+        cardsMeta.push({
+          steamAppId: app.steamAppId,
+          title,
+          price: pricing.price,
+          originalPrice: pricing.originalPrice,
+          discount: pricing.discount,
+          image: details?.header_image ?? steamHeaderUrl(app),
+          effectiveUsd: pricing.effectiveUsd,
+          originalUsd: pricing.originalUsd,
+          discountPercent: pricing.discountPercent,
+          hasDeal: pricing.hasDeal,
+          recommendationsTotal,
+          titleSort: title.trim().toLowerCase(),
+        });
+      }
+
+      if (steamApps.length < windowSize) break;
+    }
   } else {
-    const seedBase = `q=${q}|genre=${genre}|category=${category}|page=${page}`;
+    const seedBase = `q=${q}|genre=${genre}|category=${category}|page=${page}|sort=${sort}|platform=${platform}|deals=${dealsOnly}`;
     const batchSize = 16;
     const maxSkip = Math.max(maxSkipGuess - batchSize, 0);
-    const attempts = 8;
+    const attempts = 12;
+    const targetCount = sort === "relevance" ? limit : Math.min(limit * 3, 72);
 
     const seenIds = new Set<number>();
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-      if (cards.length >= limit) break;
+      if (cardsMeta.length >= targetCount) break;
 
       const skip = maxSkip > 0 ? Math.floor(hashToUnit(`${seedBase}|${attempt}`) * (maxSkip + 1)) : 0;
       const steamApps = await fetchSteamApps({
@@ -230,56 +507,120 @@ export default async function BrowsePage({
       );
 
       for (const app of steamApps) {
-        if (cards.length >= limit) break;
+        if (cardsMeta.length >= targetCount) break;
         if (seenIds.has(app.steamAppId)) continue;
         seenIds.add(app.steamAppId);
 
         const details = detailsMap.get(app.steamAppId) ?? null;
         if (genre && !hasGenre(details ?? undefined, genre)) continue;
         if (category && !matchesCategoryFilter(details, category)) continue;
+        if (platform && !matchesPlatform(details, platform)) continue;
 
         const fallback = pseudoOriginalPrice(app.steamAppId);
-        const pricing = toPriceLabel(details, fallback);
+        const pricing = toPriceMeta(details, fallback, storePromos);
+        const recommendationsTotal = details?.recommendations?.total ?? 0;
 
-        cards.push({
+        if (requiresKnownPrice && !pricing.knownPrice) continue;
+        if (typeof minReviews === "number" && recommendationsTotal < minReviews) continue;
+        if (dealsOnly && !pricing.hasDeal) continue;
+        if (typeof minPrice === "number" && pricing.effectiveUsd < minPrice) continue;
+        if (typeof maxPrice === "number" && pricing.effectiveUsd > maxPrice) continue;
+
+        const title = details?.name?.trim() || app.name;
+        cardsMeta.push({
           steamAppId: app.steamAppId,
-          title: details?.name?.trim() || app.name,
+          title,
           price: pricing.price,
           originalPrice: pricing.originalPrice,
           discount: pricing.discount,
           image: details?.header_image ?? steamHeaderUrl(app),
+          effectiveUsd: pricing.effectiveUsd,
+          originalUsd: pricing.originalUsd,
+          discountPercent: pricing.discountPercent,
+          hasDeal: pricing.hasDeal,
+          recommendationsTotal,
+          titleSort: title.trim().toLowerCase(),
         });
       }
     }
   }
 
+  const sortedMeta = (() => {
+    if (sort === "relevance") return cardsMeta;
+    const copy = [...cardsMeta];
+    copy.sort((a, b) => {
+      if (sort === "popular") {
+        return b.recommendationsTotal - a.recommendationsTotal || a.titleSort.localeCompare(b.titleSort);
+      }
+      if (sort === "price_asc") {
+        return a.effectiveUsd - b.effectiveUsd || a.titleSort.localeCompare(b.titleSort);
+      }
+      if (sort === "price_desc") {
+        return b.effectiveUsd - a.effectiveUsd || a.titleSort.localeCompare(b.titleSort);
+      }
+      if (sort === "discount_desc") {
+        return b.discountPercent - a.discountPercent || b.recommendationsTotal - a.recommendationsTotal;
+      }
+      if (sort === "name_asc") {
+        return a.titleSort.localeCompare(b.titleSort);
+      }
+      return 0;
+    });
+    return copy;
+  })();
+
+  const cards = sortedMeta.slice(0, limit).map((card) => {
+    const { effectiveUsd, originalUsd, discountPercent, hasDeal, recommendationsTotal, titleSort, ...plain } =
+      card;
+    return plain;
+  });
+
   const showApiHint = !apiHadResults && cards.length === 0 && !q;
-  const hasNext = cards.length === limit;
+  const hasNext = hasFilter ? sortedMeta.length >= limit : couldHaveMore;
 
-  const prevHref = (() => {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (genre) params.set("genre", genre);
-    if (category) params.set("category", category);
-    params.set("page", String(Math.max(1, page - 1)));
-    return `/browse?${params.toString()}`;
-  })();
+  const prevHref = buildBrowseHref({
+    q,
+    genre,
+    category,
+    sort,
+    platform,
+    minPrice,
+    maxPrice,
+    minReviews,
+    deals: dealsOnly,
+    page: Math.max(1, page - 1),
+  });
 
-  const nextHref = (() => {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (genre) params.set("genre", genre);
-    if (category) params.set("category", category);
-    params.set("page", String(page + 1));
-    return `/browse?${params.toString()}`;
-  })();
+  const nextHref = buildBrowseHref({
+    q,
+    genre,
+    category,
+    sort,
+    platform,
+    minPrice,
+    maxPrice,
+    minReviews,
+    deals: dealsOnly,
+    page: page + 1,
+  });
 
   const resetHref = "/browse";
-  const filterLabel = genre
-    ? `Genre: ${genre}`
-    : category
-      ? `Category: ${category}`
-      : null;
+  const filterLabel = (() => {
+    const labels: string[] = [];
+    if (genre) labels.push(`Genre: ${genre}`);
+    if (category) labels.push(`Category: ${category}`);
+    if (platform) labels.push(`Platform: ${platform}`);
+    if (typeof minPrice === "number" || typeof maxPrice === "number") {
+      labels.push(
+        `Price: ${typeof minPrice === "number" ? formatUsd(minPrice) : "Any"} - ${
+          typeof maxPrice === "number" ? formatUsd(maxPrice) : "Any"
+        }`
+      );
+    }
+    if (typeof minReviews === "number" && minReviews > 0) labels.push(`Min reviews: ${minReviews}`);
+    if (dealsOnly) labels.push("Deals only");
+    return labels.length ? labels.join(" | ") : null;
+  })();
 
   return (
     <div className="w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
@@ -297,10 +638,23 @@ export default async function BrowsePage({
               name="q"
               defaultValue={q}
               placeholder="Search games..."
+              autoComplete="off"
               className="h-12 w-full rounded-xl bg-[#1b1a55] px-4 text-white placeholder:text-white/60 outline-none focus:ring-2 focus:ring-white/30 sm:max-w-xl"
             />
             {genre ? <input type="hidden" name="genre" value={genre} /> : null}
             {category ? <input type="hidden" name="category" value={category} /> : null}
+            {sort !== "relevance" ? <input type="hidden" name="sort" value={sort} /> : null}
+            {platform ? <input type="hidden" name="platform" value={platform} /> : null}
+            {typeof minPrice === "number" ? (
+              <input type="hidden" name="minPrice" value={String(minPrice)} />
+            ) : null}
+            {typeof maxPrice === "number" ? (
+              <input type="hidden" name="maxPrice" value={String(maxPrice)} />
+            ) : null}
+            {typeof minReviews === "number" ? (
+              <input type="hidden" name="minReviews" value={String(minReviews)} />
+            ) : null}
+            {dealsOnly ? <input type="hidden" name="deals" value="1" /> : null}
             <button
               type="submit"
               className="h-12 rounded-xl bg-white px-5 text-sm font-semibold text-[#1b1a55]"
@@ -311,7 +665,14 @@ export default async function BrowsePage({
           {q ? (
             <p className="text-sm text-white/70">
               Showing results for <span className="font-semibold text-white">{q}</span> (page{" "}
-              {page})
+              {page}
+              {filterLabel ? (
+                <>
+                  {" "}
+                  · <span className="font-semibold text-white">{filterLabel}</span>
+                </>
+              ) : null}
+              )
             </p>
           ) : (
             <p className="text-sm text-white/70">
@@ -363,7 +724,14 @@ export default async function BrowsePage({
 
             {cards.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-[#0c143d]/60 p-5 text-sm text-white/75 shadow-xl">
-                No games found.
+                <p className="font-semibold text-white">No games found.</p>
+                <p className="mt-1">
+                  Try a different search or{" "}
+                  <Link href={resetHref} className="text-cyan-300 underline underline-offset-2">
+                    reset filters
+                  </Link>
+                  .
+                </p>
               </div>
             ) : null}
 
@@ -394,33 +762,165 @@ export default async function BrowsePage({
             </div>
           </div>
 
-          <aside className="w-full max-w-xs space-y-6 rounded-2xl bg-[#0c143d] p-5 shadow-xl lg:sticky lg:top-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-2xl font-semibold">Filters</h3>
-              <Link href={resetHref} className="text-sm text-cyan-300">
-                Reset
-              </Link>
-            </div>
-
-            {filterLabel ? (
-              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
-                Active: <span className="font-semibold text-white">{filterLabel}</span>
+          <aside className="w-full max-w-xs rounded-2xl bg-[#0c143d] p-5 shadow-xl lg:sticky lg:top-6">
+            <form action="/browse" method="get" className="space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-2xl font-semibold">Filters</h3>
+                <Link href={resetHref} className="text-sm text-cyan-300">
+                  Reset
+                </Link>
               </div>
-            ) : null}
-            <div className="rounded-xl bg-[#1b1a55] px-4 py-3 text-sm text-white/80">
-              Keywords
-            </div>
-            <div className="space-y-4 text-white/80">
-              {["Sort by", "Genres", "Price", "Platform", "Ratings"].map((label) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-between rounded-lg px-1 py-2"
-                >
-                  <span className="text-lg">{label}</span>
-                  <span className="text-xl text-white/60">›</span>
+
+              {filterLabel ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
+                  Active: <span className="font-semibold text-white">{filterLabel}</span>
                 </div>
-              ))}
-            </div>
+              ) : null}
+              <div className="space-y-2">
+                <label htmlFor="browseKeywords" className="text-sm font-semibold text-white/80">
+                  Keywords
+                </label>
+                <input
+                  id="browseKeywords"
+                  name="q"
+                  defaultValue={q}
+                  placeholder="Search games..."
+                  autoComplete="off"
+                  className="h-11 w-full rounded-xl bg-[#1b1a55] px-4 text-sm text-white placeholder:text-white/60 outline-none focus:ring-2 focus:ring-white/30"
+                />
+              </div>
+
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <label htmlFor="browseSort" className="text-sm font-semibold text-white/80">
+                    Sort by
+                  </label>
+                  <select
+                    id="browseSort"
+                    name="sort"
+                    defaultValue={sort}
+                    className="h-11 w-full rounded-xl bg-[#1b1a55] px-4 text-sm text-white outline-none focus:ring-2 focus:ring-white/30"
+                  >
+                    <option value="relevance">Relevance</option>
+                    <option value="popular">Popularity (reviews)</option>
+                    <option value="discount_desc">Biggest discount</option>
+                    <option value="price_asc">Price: Low to High</option>
+                    <option value="price_desc">Price: High to Low</option>
+                    <option value="name_asc">Name: A to Z</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="browseGenre" className="text-sm font-semibold text-white/80">
+                    Genre
+                  </label>
+                  <select
+                    id="browseGenre"
+                    name="genre"
+                    defaultValue={genre}
+                    className="h-11 w-full rounded-xl bg-[#1b1a55] px-4 text-sm text-white outline-none focus:ring-2 focus:ring-white/30"
+                  >
+                    <option value="">Any</option>
+                    {GENRE_OPTIONS.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="browseCategory" className="text-sm font-semibold text-white/80">
+                    Category
+                  </label>
+                  <select
+                    id="browseCategory"
+                    name="category"
+                    defaultValue={category}
+                    className="h-11 w-full rounded-xl bg-[#1b1a55] px-4 text-sm text-white outline-none focus:ring-2 focus:ring-white/30"
+                  >
+                    <option value="">Any</option>
+                    {CATEGORY_OPTIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-white/80">Price (USD)</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      name="minPrice"
+                      defaultValue={typeof minPrice === "number" ? String(minPrice) : ""}
+                      placeholder="Min"
+                      inputMode="decimal"
+                      className="h-11 w-full rounded-xl bg-[#1b1a55] px-4 text-sm text-white placeholder:text-white/60 outline-none focus:ring-2 focus:ring-white/30"
+                    />
+                    <input
+                      name="maxPrice"
+                      defaultValue={typeof maxPrice === "number" ? String(maxPrice) : ""}
+                      placeholder="Max"
+                      inputMode="decimal"
+                      className="h-11 w-full rounded-xl bg-[#1b1a55] px-4 text-sm text-white placeholder:text-white/60 outline-none focus:ring-2 focus:ring-white/30"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="browsePlatform" className="text-sm font-semibold text-white/80">
+                    Platform
+                  </label>
+                  <select
+                    id="browsePlatform"
+                    name="platform"
+                    defaultValue={platform}
+                    className="h-11 w-full rounded-xl bg-[#1b1a55] px-4 text-sm text-white outline-none focus:ring-2 focus:ring-white/30"
+                  >
+                    <option value="">Any</option>
+                    <option value="windows">Windows</option>
+                    <option value="mac">Mac</option>
+                    <option value="linux">Linux</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="browseMinReviews" className="text-sm font-semibold text-white/80">
+                    Ratings (min reviews)
+                  </label>
+                  <input
+                    id="browseMinReviews"
+                    name="minReviews"
+                    defaultValue={typeof minReviews === "number" ? String(minReviews) : ""}
+                    placeholder="e.g. 5000"
+                    inputMode="numeric"
+                    className="h-11 w-full rounded-xl bg-[#1b1a55] px-4 text-sm text-white placeholder:text-white/60 outline-none focus:ring-2 focus:ring-white/30"
+                  />
+                  <p className="text-xs text-white/55">
+                    Uses Steam “reviews count” as a proxy for popularity.
+                  </p>
+                </div>
+
+                <label className="flex items-center gap-2 text-sm text-white/80">
+                  <input
+                    type="checkbox"
+                    name="deals"
+                    value="1"
+                    defaultChecked={dealsOnly}
+                    className="h-4 w-4 accent-cyan-300"
+                  />
+                  Deals only
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                className="h-11 w-full rounded-xl bg-white text-sm font-semibold text-[#1b1a55] shadow transition hover:bg-white/95"
+              >
+                Apply Filters
+              </button>
+            </form>
           </aside>
         </div>
       </div>

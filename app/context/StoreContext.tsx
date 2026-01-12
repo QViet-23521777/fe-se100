@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useState,
 } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { gameStoreApiUrl } from "@/lib/game-store-api";
@@ -245,6 +246,20 @@ const StoreContext = createContext<{
   cartCount: number;
   wishlistCount: number;
   subtotalCents: number;
+  promoCode: string;
+  promoPreview:
+    | {
+        code: string;
+        subtotalCents: number;
+        discountCents: number;
+        totalCents: number;
+      }
+    | null;
+  promoLoading: boolean;
+  promoError: string | null;
+  setPromoCode: (code: string) => void;
+  previewPromo: (code?: string) => Promise<void>;
+  clearPromo: () => void;
   addToCart: (input: StoreItemInput, quantity?: number) => void;
   removeFromCart: (id: string) => void;
   setCartQuantity: (id: string, quantity: number) => void;
@@ -257,6 +272,31 @@ const StoreContext = createContext<{
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const { token, user, logout } = useAuth();
+  const [promoCode, setPromoCodeState] = useState("");
+  const [promoPreview, setPromoPreview] = useState<{
+    code: string;
+    subtotalCents: number;
+    discountCents: number;
+    totalCents: number;
+  } | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+
+  const setPromoCode = useCallback((code: string) => {
+    setPromoCodeState(code ?? "");
+  }, []);
+
+  const clearPromo = useCallback(() => {
+    setPromoCodeState("");
+    setPromoPreview(null);
+    setPromoError(null);
+    try {
+      localStorage.removeItem("gameverse_promo_code_v1");
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const [state, dispatch] = useReducer(reducer, {
     cart: [],
     wishlist: [],
@@ -265,6 +305,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     cartHydrated: false,
     wishlistHydrated: false,
   });
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("gameverse_promo_code_v1");
+      if (saved && typeof saved === "string") {
+        setPromoCodeState(saved);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -308,6 +359,87 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, [logout, token, user]);
+
+  const previewPromo = useCallback(
+    async (code?: string) => {
+      if (!token || !user || user.accountType !== "customer") return;
+      const nextCode = (code ?? promoCode).trim();
+      if (!nextCode) {
+        clearPromo();
+        return;
+      }
+
+      setPromoLoading(true);
+      setPromoError(null);
+
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me/promotions/preview"), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ code: nextCode }),
+        });
+        const data = (await res.json().catch(() => null)) as any;
+        if (!res.ok) {
+          if (res.status === 401) {
+            logout();
+            return;
+          }
+          const message = extractApiErrorMessage(data) || "Failed to apply promo code.";
+          setPromoPreview(null);
+          setPromoError(message);
+          return;
+        }
+
+        setPromoCodeState(nextCode);
+        try {
+          localStorage.setItem("gameverse_promo_code_v1", nextCode);
+        } catch {
+          // ignore
+        }
+
+        setPromoPreview({
+          code: String(data?.code ?? nextCode),
+          subtotalCents:
+            typeof data?.subtotalCents === "number" ? Math.max(0, Math.floor(data.subtotalCents)) : 0,
+          discountCents:
+            typeof data?.discountCents === "number" ? Math.max(0, Math.floor(data.discountCents)) : 0,
+          totalCents:
+            typeof data?.totalCents === "number" ? Math.max(0, Math.floor(data.totalCents)) : 0,
+        });
+      } catch (err) {
+        console.error(err);
+        setPromoPreview(null);
+        setPromoError("Failed to apply promo code. Please try again.");
+      } finally {
+        setPromoLoading(false);
+      }
+    },
+    [clearPromo, logout, promoCode, token, user]
+  );
+
+  useEffect(() => {
+    // If user is not a customer, promo shouldn't be active.
+    if (!token || !user || user.accountType !== "customer") {
+      setPromoPreview(null);
+      setPromoError(null);
+      return;
+    }
+
+    // Re-preview when cart subtotal changes (so discount stays accurate).
+    if (!state.cartHydrated) return;
+    if (!promoCode.trim()) return;
+
+    const currentSubtotalCents = state.cart.reduce((acc, line) => {
+      if (typeof line.unitPriceCents !== "number") return acc;
+      return acc + line.unitPriceCents * line.quantity;
+    }, 0);
+
+    if (promoPreview && promoPreview.subtotalCents === currentSubtotalCents) return;
+    void previewPromo(promoCode);
+  }, [previewPromo, promoCode, promoPreview, state.cart, state.cartHydrated, token, user]);
 
   useEffect(() => {
     let active = true;
@@ -665,6 +797,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       cartCount,
       wishlistCount: state.wishlist.length,
       subtotalCents,
+      promoCode,
+      promoPreview,
+      promoLoading,
+      promoError,
+      setPromoCode,
+      previewPromo,
+      clearPromo,
       addToCart,
       removeFromCart,
       setCartQuantity,
@@ -677,12 +816,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [
       addToCart,
       cartCount,
+      clearPromo,
       clearCart,
       clearWishlist,
       isWishlisted,
       removeFromCart,
       removeWishlist,
       setCartQuantity,
+      promoCode,
+      promoError,
+      promoLoading,
+      promoPreview,
+      previewPromo,
+      setPromoCode,
       state.cart,
       state.cartHydrated,
       state.cartError,

@@ -61,7 +61,8 @@ export function TopBarSearch({
   }, []);
 
   useEffect(() => {
-    if (!canSearch) {
+    if (!open || !canSearch) {
+      abortRef.current?.abort();
       setItems([]);
       setLoading(false);
       setActiveIndex(-1);
@@ -75,10 +76,9 @@ export function TopBarSearch({
 
       setLoading(true);
       try {
+        const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 20);
         const res = await fetch(
-          `/api/search?q=${encodeURIComponent(
-            normalizedQuery
-          )}&limit=${Math.min(Math.max(Math.floor(limit), 1), 20)}`,
+          `/api/search?q=${encodeURIComponent(normalizedQuery)}&limit=${safeLimit}`,
           { signal: controller.signal }
         );
 
@@ -112,11 +112,18 @@ export function TopBarSearch({
     setQuery("");
     setItems([]);
     setActiveIndex(-1);
+
     if (item.type === "steam" && item.steamAppId) {
       router.push(`/product/${item.steamAppId}`);
       return;
     }
     router.push(`/product/game/${item.id}`);
+  }
+
+  function goToBrowseSearch() {
+    if (!normalizedQuery) return;
+    setOpen(false);
+    router.push(`/browse?q=${encodeURIComponent(normalizedQuery)}`);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -153,8 +160,7 @@ export function TopBarSearch({
 
       if (normalizedQuery.length > 0) {
         event.preventDefault();
-        setOpen(false);
-        router.push(`/browse?search=${encodeURIComponent(normalizedQuery)}`);
+        goToBrowseSearch();
       }
     }
   }
@@ -176,9 +182,7 @@ export function TopBarSearch({
           aria-label="Search games"
           autoComplete="off"
         />
-        {loading ? (
-          <span className="text-xs text-white/60">Searching…</span>
-        ) : null}
+        {loading ? <span className="text-xs text-white/60">Searching…</span> : null}
       </div>
 
       {open && canSearch ? (
@@ -217,7 +221,9 @@ export function TopBarSearch({
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-xs text-white/40">
-                          {String(item.steamAppId)}
+                          {item.type === "steam"
+                            ? String(item.steamAppId ?? "")
+                            : "Custom"}
                         </div>
                       )}
                     </div>
@@ -248,6 +254,17 @@ export function TopBarSearch({
               ))}
             </ul>
           )}
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              goToBrowseSearch();
+            }}
+            className="flex w-full items-center justify-between border-t border-white/10 px-4 py-2 text-sm text-white/70 hover:bg-white/5"
+          >
+            <span className="truncate">Search for “{normalizedQuery}”</span>
+            <span className="text-white/50">Enter</span>
+          </button>
         </div>
       ) : null}
     </div>

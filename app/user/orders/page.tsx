@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { TopBar } from "@/components/TopBar";
 import { useAuth } from "@/app/context/AuthContext";
@@ -22,6 +22,9 @@ type ApiOrder = {
   totalAmount?: number;
   totalValue?: number;
   totalCents?: number;
+  paymentStatus?: string;
+  promoCode?: string;
+  promoDiscountValue?: number;
   items?: Array<{
     steamAppId?: number;
     slug?: string;
@@ -62,7 +65,18 @@ type OrderView = {
   id: string;
   dateIso: string;
   totalCents: number;
+  paymentStatus: string;
   items: OrderItemView[];
+};
+
+type RefundRequestView = {
+  id: string;
+  orderId: string;
+  status: "Pending" | "Approved" | "Rejected" | string;
+  requestedAt?: string;
+  resolvedAt?: string;
+  reason?: string;
+  resolutionNote?: string;
 };
 
 const MONTHS = [
@@ -106,6 +120,47 @@ function parseAmountToCents(value: unknown) {
 function parseCentsValue(value: unknown) {
   if (typeof value !== "number" || !Number.isFinite(value)) return 0;
   return Math.max(0, Math.floor(value));
+}
+
+const REFUND_WINDOW_DAYS =
+  Number(process.env.NEXT_PUBLIC_REFUND_WINDOW_DAYS ?? "7") || 7;
+
+function isWithinRefundWindow(dateIso: string) {
+  const date = new Date(dateIso);
+  if (Number.isNaN(date.getTime())) return false;
+  const ms = Date.now() - date.getTime();
+  const days = ms / (1000 * 60 * 60 * 24);
+  return days >= 0 && days <= REFUND_WINDOW_DAYS;
+}
+
+function normalizeRefundRequestsByOrderId(input: unknown) {
+  const byOrder: Record<string, RefundRequestView> = {};
+  if (!Array.isArray(input)) return byOrder;
+
+  for (const raw of input as any[]) {
+    const id = safeString(raw?.id);
+    const orderId = safeString(raw?.orderId ?? raw?.order?.id);
+    if (!id || !orderId) continue;
+
+    const requestedAt = safeString(raw?.requestedAt);
+    const existing = byOrder[orderId];
+    const existingDate = existing?.requestedAt ? new Date(existing.requestedAt).getTime() : 0;
+    const nextDate = requestedAt ? new Date(requestedAt).getTime() : 0;
+
+    if (existing && existingDate >= nextDate) continue;
+
+    byOrder[orderId] = {
+      id,
+      orderId,
+      status: safeString(raw?.status) || "Pending",
+      requestedAt: requestedAt || undefined,
+      resolvedAt: safeString(raw?.resolvedAt) || undefined,
+      reason: safeString(raw?.reason) || undefined,
+      resolutionNote: safeString(raw?.resolutionNote) || undefined,
+    };
+  }
+
+  return byOrder;
 }
 
 function normalizeApiOrders(input: unknown): OrderView[] {
@@ -198,11 +253,13 @@ function normalizeApiOrders(input: unknown): OrderView[] {
         : [];
 
       const items = itemsFromEmbedded.length ? itemsFromEmbedded : itemsFromDetails;
+      const paymentStatus = safeString(order.paymentStatus) || "Pending";
 
       return {
         id,
         dateIso,
         totalCents,
+        paymentStatus,
         items,
       } satisfies OrderView;
     })
@@ -296,6 +353,17 @@ export default function OrdersPage() {
   const [newFlag, setNewFlag] = useState<string | null>(null);
   const [hashOrderId, setHashOrderId] = useState<string | null>(null);
 
+  const [refundRequestsByOrderId, setRefundRequestsByOrderId] = useState<
+    Record<string, RefundRequestView>
+  >({});
+  const [refundLoading, setRefundLoading] = useState(false);
+  const [refundError, setRefundError] = useState<string | null>(null);
+
+  const [refundModalOrder, setRefundModalOrder] = useState<OrderView | null>(null);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
+  const [refundMsg, setRefundMsg] = useState<string | null>(null);
+
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
@@ -324,6 +392,9 @@ export default function OrdersPage() {
     setOrders([]);
     setApiError(null);
     setLoadingApi(false);
+    setRefundRequestsByOrderId({});
+    setRefundError(null);
+    setRefundLoading(false);
   }, [mounted, token]);
 
   useEffect(() => {
@@ -362,6 +433,102 @@ export default function OrdersPage() {
       active = false;
     };
   }, [mounted, token]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!token) return;
+
+    let active = true;
+    void (async () => {
+      setRefundLoading(true);
+      setRefundError(null);
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me/refund-requests"), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = (await res.json().catch(() => null)) as unknown;
+        if (!res.ok) {
+          const message =
+            (data as any)?.error?.message ||
+            (data as any)?.message ||
+            "Could not load refund requests right now.";
+          throw new Error(message);
+        }
+        if (!active) return;
+        setRefundRequestsByOrderId(normalizeRefundRequestsByOrderId(data));
+      } catch (err) {
+        console.error(err);
+        if (!active) return;
+        setRefundError(err instanceof Error ? err.message : "Failed to load refund requests.");
+      } finally {
+        if (active) setRefundLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [mounted, token]);
+
+  const refundableOrderIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const order of orders) {
+      const status = safeString(order.paymentStatus);
+      const req = refundRequestsByOrderId[order.id];
+      const hasPending = req?.status?.toLowerCase() === "pending";
+      const isRefunded = status.toLowerCase() === "refunded";
+      const isCompleted = status.toLowerCase() === "completed";
+      if (isRefunded) continue;
+      if (!isCompleted) continue;
+      if (hasPending) continue;
+      if (!isWithinRefundWindow(order.dateIso)) continue;
+      set.add(order.id);
+    }
+    return set;
+  }, [orders, refundRequestsByOrderId]);
+
+  const submitRefundRequest = async () => {
+    if (!token || !refundModalOrder) return;
+    setRefundSubmitting(true);
+    setRefundMsg(null);
+    try {
+      const orderId = refundModalOrder.id;
+      const res = await fetch(
+        gameStoreApiUrl(`/customers/me/orders/${encodeURIComponent(orderId)}/refund-requests`),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ reason: refundReason.trim() || undefined }),
+        }
+      );
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok) {
+        const message =
+          data?.error?.message ||
+          data?.message ||
+          "Failed to create refund request.";
+        throw new Error(message);
+      }
+      setRefundRequestsByOrderId((prev) => {
+        const next = { ...prev };
+        const created = normalizeRefundRequestsByOrderId([data]);
+        const createdForOrder = created[orderId];
+        if (createdForOrder) next[orderId] = createdForOrder;
+        return next;
+      });
+      setRefundReason("");
+      setRefundModalOrder(null);
+      setRefundMsg("Refund request submitted. An admin will review it soon.");
+    } catch (err) {
+      setRefundMsg(err instanceof Error ? err.message : "Failed to create refund request.");
+    } finally {
+      setRefundSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (!mounted) return;
@@ -433,12 +600,21 @@ export default function OrdersPage() {
               </div>
             ) : null}
 
+            {refundError ? (
+              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
+                {refundError}
+              </div>
+            ) : null}
+
             {!hasOrders ? (
               <EmptyState showLogin={showLogin} />
             ) : (
               <div className="space-y-5">
                 {orders.map((order) => {
                   const isExpanded = expandedId === order.id;
+                  const paymentStatus = safeString(order.paymentStatus) || "Pending";
+                  const refundReq = refundRequestsByOrderId[order.id];
+                  const refundEligible = refundableOrderIds.has(order.id);
                   return (
                     <div key={order.id} className="rounded-3xl bg-[#0c143d]/30 p-4">
                       <button
@@ -475,6 +651,65 @@ export default function OrdersPage() {
 
                       {isExpanded ? (
                         <div className="mt-4 rounded-2xl border border-white/10 bg-black/10 p-5">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex flex-wrap items-center gap-2 text-sm text-white/80">
+                              <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
+                                Status:{" "}
+                                <span className="font-semibold text-white">{paymentStatus}</span>
+                              </span>
+                              {refundReq ? (
+                                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
+                                  Refund:{" "}
+                                  <span className="font-semibold text-white">
+                                    {refundReq.status}
+                                  </span>
+                                </span>
+                              ) : null}
+                              {refundLoading ? (
+                                <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
+                                  Loading refundsƒ?İ
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-end gap-3">
+                              {refundEligible ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRefundMsg(null);
+                                    setRefundReason("");
+                                    setRefundModalOrder(order);
+                                  }}
+                                  className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#1b1a55]"
+                                >
+                                  Request refund
+                                </button>
+                              ) : (
+                                <span className="text-xs text-white/50">
+                                  {paymentStatus.toLowerCase() === "refunded"
+                                    ? "Already refunded."
+                                    : paymentStatus.toLowerCase() !== "completed"
+                                      ? "Refund available for completed orders only."
+                                      : refundReq?.status?.toLowerCase() === "pending"
+                                        ? "Refund request pending."
+                                        : !isWithinRefundWindow(order.dateIso)
+                                          ? `Refund window is ${REFUND_WINDOW_DAYS} days.`
+                                          : null}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {refundReq?.resolutionNote ? (
+                            <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+                              <p className="font-semibold text-white">Refund note</p>
+                              <p className="mt-1 text-white/70">
+                                {refundReq.resolutionNote}
+                              </p>
+                            </div>
+                          ) : null}
+
                           <p className="text-sm font-semibold text-white">Order items</p>
 
                           {order.items.length === 0 ? (
@@ -546,6 +781,85 @@ export default function OrdersPage() {
             )}
           </main>
         </div>
+
+        {refundModalOrder ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-[#0c143d] p-6 text-white shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold tracking-wide text-white/60">
+                    REFUND REQUEST
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold">Request a refund</p>
+                  <p className="mt-2 text-sm text-white/70">
+                    This will create a refund request for order{" "}
+                    <span className="font-semibold text-white">
+                      {refundModalOrder.id}
+                    </span>
+                    . An admin must approve it.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
+                  onClick={() => setRefundModalOrder(null)}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <label className="block text-sm font-semibold text-white/90">
+                  Reason (optional)
+                </label>
+                <textarea
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  rows={4}
+                  maxLength={500}
+                  className="w-full resize-none rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/20"
+                  placeholder="Tell us why you want a refund…"
+                />
+                <p className="text-xs text-white/50">
+                  Refunds are available within {REFUND_WINDOW_DAYS} days for completed
+                  orders. Approved refunds are credited to your account balance.
+                </p>
+
+                {refundMsg ? (
+                  <div
+                    className={`rounded-2xl border p-4 text-sm ${
+                      refundMsg.toLowerCase().includes("failed") ||
+                      refundMsg.toLowerCase().includes("error")
+                        ? "border-red-400/30 bg-red-500/10 text-red-100"
+                        : "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                    }`}
+                  >
+                    {refundMsg}
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/20 bg-white/5 px-6 py-2 text-sm font-semibold text-white hover:bg-white/10"
+                    onClick={() => setRefundModalOrder(null)}
+                    disabled={refundSubmitting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full bg-white px-6 py-2 text-sm font-semibold text-[#1b1a55] disabled:opacity-70"
+                    onClick={submitRefundRequest}
+                    disabled={refundSubmitting}
+                  >
+                    {refundSubmitting ? "Submitting…" : "Submit request"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <footer className="mt-6 space-y-6 border-t border-white/10 pt-8">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">

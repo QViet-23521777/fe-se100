@@ -19,6 +19,12 @@ export type SteamRecommendations = {
   total?: number;
 };
 
+export type SteamPlatforms = {
+  windows?: boolean;
+  mac?: boolean;
+  linux?: boolean;
+};
+
 export type SteamAppStoreDetails = {
   steam_appid?: number;
   name?: string;
@@ -28,6 +34,7 @@ export type SteamAppStoreDetails = {
   recommendations?: SteamRecommendations;
   genres?: SteamGenre[];
   categories?: SteamCategory[];
+  platforms?: SteamPlatforms;
   header_image?: string;
 };
 
@@ -144,6 +151,7 @@ export async function fetchSteamAppDetailsBatch(
       "release_date",
       "genres",
       "categories",
+      "platforms",
       "header_image",
       "steam_appid",
       "name",

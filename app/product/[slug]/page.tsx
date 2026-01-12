@@ -5,6 +5,7 @@ import { TopBar } from "@/components/TopBar";
 import { fetchSteamAppById, fetchSteamApps } from "@/lib/steam-apps";
 import { ProductActions } from "@/components/StoreActions";
 import { ScreenshotGallery } from "@/components/ScreenshotGallery";
+import { applyStorePromotionsToUsd, fetchActiveStorePromotions } from "@/lib/store-promotions";
 
 const staticProduct = {
   slug: "black-myth-wukong",
@@ -146,6 +147,13 @@ function priceFallback(steamAppId: number) {
   const points = [9.99, 14.99, 19.99, 24.99, 29.99, 39.99, 49.99, 59.99, 69.99];
   const idx = Math.abs(steamAppId) % points.length;
   return `$${points[idx].toFixed(2)}`;
+}
+
+function parseUsdLabel(label: string) {
+  const match = String(label ?? "").match(/-?\d+(\.\d+)?/);
+  if (!match) return null;
+  const value = Number(match[0]);
+  return Number.isFinite(value) ? value : null;
 }
 
 async function fetchSteamDetails(steamAppId: number, detailsUrl?: string) {
@@ -323,6 +331,35 @@ export default async function ProductPage({
       ? `-${priceOverview.discount_percent}%`
       : undefined;
 
+  const storePromos = await fetchActiveStorePromotions();
+
+  const baseUsd =
+    !isFree && (typeof priceOverview?.final === "number" ? priceOverview.final / 100 : null);
+  const labelUsd = !isFree ? parseUsdLabel(priceText) : null;
+  const effectiveUsd = typeof baseUsd === "number" ? baseUsd : labelUsd;
+
+  const storeApplied =
+    typeof effectiveUsd === "number"
+      ? applyStorePromotionsToUsd(effectiveUsd, storePromos)
+      : { priceUsd: effectiveUsd ?? 0, discountLabel: null };
+
+  const storeDiscountActive =
+    !isFree &&
+    typeof effectiveUsd === "number" &&
+    storeApplied.discountLabel &&
+    storeApplied.priceUsd < effectiveUsd;
+
+  const finalPriceText = storeDiscountActive
+    ? `$${storeApplied.priceUsd.toFixed(2)}`
+    : priceText;
+
+  // If store promo applies, show the price before store promo as the "original" price.
+  // (This can be the Steam final price, even if Steam itself has a discount.)
+  const finalOriginalText = storeDiscountActive ? priceText : originalText;
+  const finalDiscountText = storeDiscountActive
+    ? storeApplied.discountLabel
+    : discountText;
+
   const shots = details?.screenshots?.slice(0, 8) ?? [];
   const shotItems = shots.map((shot) => ({
     id: shot.id,
@@ -381,17 +418,17 @@ export default async function ProductPage({
               <div className="space-y-2">
                 <p className="text-4xl font-bold">{title}</p>
                 <div className="flex items-center gap-3 text-lg text-white/85">
-                  {originalText ? (
+                  {finalOriginalText ? (
                     <span className="text-white/50 line-through">
-                      {originalText}
+                      {finalOriginalText}
                     </span>
                   ) : null}
                   <span className="text-2xl font-semibold text-white">
-                    {priceText}
+                    {finalPriceText}
                   </span>
-                  {discountText ? (
+                  {finalDiscountText ? (
                     <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-[#1b1a55]">
-                      {discountText}
+                      {finalDiscountText}
                     </span>
                   ) : null}
                 </div>
@@ -404,8 +441,8 @@ export default async function ProductPage({
                   steamAppId,
                   name: title,
                   image: cover,
-                  priceLabel: priceText,
-                  originalPriceLabel: originalText ?? null,
+                  priceLabel: finalPriceText,
+                  originalPriceLabel: finalOriginalText ?? null,
                 }}
               />
 

@@ -27,6 +27,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        {/* Speed up first paint for external images we always hit (Steam headers) */}
+        <link rel="preconnect" href="https://cdn.cloudflare.steamstatic.com" />
+        <link rel="preconnect" href="https://store.akamai.steamstatic.com" />
+        <link rel="dns-prefetch" href="https://cdn.cloudflare.steamstatic.com" />
+        <link rel="dns-prefetch" href="https://store.akamai.steamstatic.com" />
+      </head>
       <body
         className={`${schibstedGrotesk.variable} ${martianMono.variable} antialiased`}
         suppressHydrationWarning
