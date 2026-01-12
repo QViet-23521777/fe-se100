@@ -239,6 +239,12 @@ export default function AdminAccountsPage() {
       subtitle: "Review and process refunds",
       href: "/user/manage-refunds",
     },
+    {
+      key: "manage-reviews",
+      title: "Manage Reviews",
+      subtitle: "Moderate customer reviews",
+      href: "/user/manage-reviews",
+    },
   ];
 
   return (

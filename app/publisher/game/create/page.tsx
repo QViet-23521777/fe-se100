@@ -64,12 +64,14 @@ export default function CreateGamePage() {
         { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
         { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
         { title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders" },
+        { title: "Manage Reviews", subtitle: "Moderate customer reviews", href: "/user/manage-reviews" },
       ];
     }
     return [
       { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
       { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
       { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
+      { title: "Manage Reviews", subtitle: "View reviews for your games", href: "/user/manage-reviews" },
     ];
   }, [user?.accountType]);
 

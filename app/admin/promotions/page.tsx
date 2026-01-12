@@ -119,6 +119,7 @@ export default function AdminPromotionsPage() {
     { key: "manage-promos", title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
     { key: "manage-orders", title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders" },
     { key: "manage-refunds", title: "Manage Refunds", subtitle: "Review and process refunds", href: "/user/manage-refunds" },
+    { key: "manage-reviews", title: "Manage Reviews", subtitle: "Moderate customer reviews", href: "/user/manage-reviews" },
   ].filter((link) =>
     isAdmin ? true : link.key !== "manage-accounts" && link.key !== "manage-orders" && link.key !== "manage-refunds"
   ); // publishers don't manage accounts, refunds, or customer orders
