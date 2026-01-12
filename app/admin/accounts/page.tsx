@@ -233,6 +233,12 @@ export default function AdminAccountsPage() {
       subtitle: "View customer purchases",
       href: "/user/manage-orders",
     },
+    {
+      key: "manage-refunds",
+      title: "Manage Refunds",
+      subtitle: "Review and process refunds",
+      href: "/user/manage-refunds",
+    },
   ];
 
   return (

@@ -206,6 +206,13 @@ export default function AccountOptionsPage() {
           href: "/user/manage-orders",
           icon: (props) => <CartIcon {...props} />,
         },
+        {
+          key: "manage-refunds",
+          title: "Manage Refunds",
+          subtitle: "Review and process refunds",
+          href: "/user/manage-refunds",
+          icon: (props) => <WalletIcon {...props} />,
+        },
       ];
     }
 

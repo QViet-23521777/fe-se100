@@ -93,6 +93,7 @@ export default function AdminOrdersPage() {
     {key: "manage-games", title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games"},
     {key: "manage-promos", title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos"},
     {key: "manage-orders", title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders"},
+    {key: "manage-refunds", title: "Manage Refunds", subtitle: "Review and process refunds", href: "/user/manage-refunds"},
   ];
 
   const loadOrders = async () => {
@@ -480,4 +481,3 @@ export default function AdminOrdersPage() {
     </div>
   );
 }
-
