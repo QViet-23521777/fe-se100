@@ -213,6 +213,20 @@ export default function AccountOptionsPage() {
           href: "/user/manage-refunds",
           icon: (props) => <WalletIcon {...props} />,
         },
+        {
+          key: "manage-reviews",
+          title: "Manage Reviews",
+          subtitle: "Moderate customer reviews",
+          href: "/user/manage-reviews",
+          icon: (props) => <WalletIcon {...props} />,
+        },
+        {
+          key: "manage-reports",
+          title: "Manage Reports",
+          subtitle: "Moderate reported content",
+          href: "/user/manage-reports",
+          icon: (props) => <WalletIcon {...props} />,
+        },
       ];
     }
 

@@ -6,6 +6,7 @@ import { fetchSteamAppById, fetchSteamApps } from "@/lib/steam-apps";
 import { ProductActions } from "@/components/StoreActions";
 import { ScreenshotGallery } from "@/components/ScreenshotGallery";
 import { applyStorePromotionsToUsd, fetchActiveStorePromotions } from "@/lib/store-promotions";
+import { ReportGameButton } from "@/components/ReportGameButton";
 
 const staticProduct = {
   slug: "black-myth-wukong",
@@ -445,6 +446,8 @@ export default async function ProductPage({
                   originalPriceLabel: finalOriginalText ?? null,
                 }}
               />
+
+              <ReportGameButton targetGameType="steam" targetId={String(steamAppId)} gameName={title} />
 
               <div className="grid gap-3 text-sm text-white/85">
                 <InfoRow label="Genres" value={genreText} />

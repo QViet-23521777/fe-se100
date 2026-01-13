@@ -203,6 +203,9 @@ export default function ProfilePage() {
         { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
         { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
         { title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders" },
+        { title: "Manage Refunds", subtitle: "Review and process refunds", href: "/user/manage-refunds" },
+        { title: "Manage Reviews", subtitle: "Moderate customer reviews", href: "/user/manage-reviews" },
+        { title: "Manage Reports", subtitle: "Moderate reported content", href: "/user/manage-reports" },
       ];
     }
     if (user?.accountType === "publisher") {

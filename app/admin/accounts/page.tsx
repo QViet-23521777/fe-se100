@@ -245,6 +245,12 @@ export default function AdminAccountsPage() {
       subtitle: "Moderate customer reviews",
       href: "/user/manage-reviews",
     },
+    {
+      key: "manage-reports",
+      title: "Manage Reports",
+      subtitle: "Moderate reported content",
+      href: "/user/manage-reports",
+    },
   ];
 
   return (

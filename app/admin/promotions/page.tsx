@@ -112,17 +112,26 @@ export default function AdminPromotionsPage() {
     }
   }, [isAdmin, isPublisher, router, token]);
 
-  const sidebarLinks: SidebarLink[] = [
-    { key: "personal", title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
-    { key: "manage-accounts", title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/user/manage-accounts" },
-    { key: "manage-games", title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
-    { key: "manage-promos", title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
-    { key: "manage-orders", title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders" },
-    { key: "manage-refunds", title: "Manage Refunds", subtitle: "Review and process refunds", href: "/user/manage-refunds" },
-    { key: "manage-reviews", title: "Manage Reviews", subtitle: "Moderate customer reviews", href: "/user/manage-reviews" },
-  ].filter((link) =>
-    isAdmin ? true : link.key !== "manage-accounts" && link.key !== "manage-orders" && link.key !== "manage-refunds"
-  ); // publishers don't manage accounts, refunds, or customer orders
+  const sidebarLinks: SidebarLink[] = useMemo(() => {
+    if (isAdmin) {
+      return [
+        { key: "personal", title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
+        { key: "manage-accounts", title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/user/manage-accounts" },
+        { key: "manage-games", title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
+        { key: "manage-promos", title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
+        { key: "manage-orders", title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders" },
+        { key: "manage-refunds", title: "Manage Refunds", subtitle: "Review and process refunds", href: "/user/manage-refunds" },
+        { key: "manage-reviews", title: "Manage Reviews", subtitle: "Moderate customer reviews", href: "/user/manage-reviews" },
+        { key: "manage-reports", title: "Manage Reports", subtitle: "Moderate reported content", href: "/user/manage-reports" },
+      ];
+    }
+    // Publisher: only the three allowed sections
+    return [
+      { key: "personal", title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
+      { key: "manage-games", title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
+      { key: "manage-promos", title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
+    ];
+  }, [isAdmin]);
 
   const activeKey = "manage-promos";
 

@@ -28,6 +28,24 @@ type GameStats = {
   sales: { totalRevenue: number; totalSales: number };
 };
 
+type DashboardSummary = {
+  games: {
+    total: number;
+    statusCounts: Record<string, number>;
+  };
+  keys: KeyStats;
+  revenue: {
+    byDay: Array<{ period: string; revenue: number }>;
+    byMonth: Array<{ period: string; revenue: number }>;
+    byYear: Array<{ period: string; revenue: number }>;
+  };
+};
+
+function formatUsd(value?: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "$0.00";
+  return `$${value.toFixed(2)}`;
+}
+
 export default function PublisherDashboardPage() {
   const { user, token } = useAuth();
   const router = useRouter();
@@ -43,6 +61,8 @@ export default function PublisherDashboardPage() {
   const [stats, setStats] = useState<GameStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   useEffect(() => {
     if (!token || !user || (user.accountType !== "publisher" && user.accountType !== "admin")) {
@@ -82,6 +102,32 @@ export default function PublisherDashboardPage() {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, user]);
+
+  useEffect(() => {
+    if (!token || !user || (user.accountType !== "publisher" && user.accountType !== "admin")) return;
+    let active = true;
+    (async () => {
+      setSummaryLoading(true);
+      try {
+        const res = await fetch(gameStoreApiUrl("/publisher/dashboard/summary"), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data) throw new Error(data?.message || "Failed to load dashboard summary");
+        if (!active) return;
+        setSummary(data as DashboardSummary);
+      } catch (err) {
+        if (!active) return;
+        setErrMsg(err instanceof Error ? err.message : "Failed to load dashboard summary");
+      } finally {
+        if (active) setSummaryLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [token, user]);
 
   const selectedGame = useMemo(() => games.find((g) => g.id === selectedId) || null, [games, selectedId]);
@@ -174,6 +220,99 @@ export default function PublisherDashboardPage() {
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
           <aside className="rounded-3xl border border-white/10 bg-[#0c143d]/60 p-4 shadow-xl backdrop-blur">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-white/50">Dashboard</p>
+                  <p className="mt-1 text-sm text-white/70">Revenue / inventory / status</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!token) return;
+                    setSummaryLoading(true);
+                    fetch(gameStoreApiUrl("/publisher/dashboard/summary"), {
+                      headers: { Authorization: `Bearer ${token}` },
+                      cache: "no-store",
+                    })
+                      .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
+                      .then(({ ok, d }) => {
+                        if (!ok) throw new Error(d?.message || "Failed to refresh");
+                        setSummary(d as DashboardSummary);
+                      })
+                      .catch((e) => setErrMsg(e instanceof Error ? e.message : "Failed to refresh"))
+                      .finally(() => setSummaryLoading(false));
+                  }}
+                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-white hover:bg-white/10"
+                >
+                  {summaryLoading ? "…" : "Refresh"}
+                </button>
+              </div>
+
+              {!summary ? (
+                <p className="mt-3 text-sm text-white/70">{summaryLoading ? "Loading…" : "No data yet."}</p>
+              ) : (
+                <div className="mt-4 space-y-3 text-sm text-white/80">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60">Games</span>
+                    <span className="font-semibold">{summary.games.total}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(summary.games.statusCounts || {}).map(([k, v]) => (
+                      <span key={k} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/80">
+                        {k}: {v}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2 text-xs text-white/80">
+                    <p>Available: {summary.keys.available}</p>
+                    <p>Sold: {summary.keys.sold}</p>
+                    <p>Reserved: {summary.keys.reserved}</p>
+                    <p>Total: {summary.keys.total}</p>
+                  </div>
+                  <div className="pt-2">
+                    <p className="text-xs text-white/60">Revenue (last 30 days)</p>
+                    <p className="mt-1 text-lg font-semibold">
+                      {formatUsd((summary.revenue.byDay || []).reduce((acc, r) => acc + (Number(r.revenue) || 0), 0))}
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {(summary.revenue.byDay || []).slice(-5).map((r) => (
+                        <div key={r.period} className="flex items-center justify-between gap-3 text-[11px] text-white/70">
+                          <span className="w-[84px] shrink-0">{r.period}</span>
+                          <span className="text-right">{formatUsd(Number(r.revenue) || 0)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs text-white/60">By month (last 3)</p>
+                        <div className="mt-2 space-y-2">
+                          {(summary.revenue.byMonth || []).slice(-3).map((r) => (
+                            <div key={r.period} className="flex items-center justify-between gap-3 text-[11px] text-white/70">
+                              <span className="w-[84px] shrink-0">{r.period}</span>
+                              <span className="text-right">{formatUsd(Number(r.revenue) || 0)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-white/60">By year (last 3)</p>
+                        <div className="mt-2 space-y-2">
+                          {(summary.revenue.byYear || []).slice(-3).map((r) => (
+                            <div key={r.period} className="flex items-center justify-between gap-3 text-[11px] text-white/70">
+                              <span className="w-[84px] shrink-0">{r.period}</span>
+                              <span className="text-right">{formatUsd(Number(r.revenue) || 0)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="mb-4 px-2 text-xs uppercase tracking-wide text-white/50">Your games</div>
             {loading ? (
               <div className="px-2 py-3 text-white/70">Loading...</div>

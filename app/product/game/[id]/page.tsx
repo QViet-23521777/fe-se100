@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { ProductActions } from "@/components/StoreActions";
+import { ReportDialog } from "@/components/ReportDialog";
 import { useAuth } from "@/app/context/AuthContext";
 import type { StoreItemInput } from "@/app/context/StoreContext";
 import { gameStoreApiUrl } from "@/lib/game-store-api";
@@ -57,6 +58,10 @@ export default function GameProductPage(props: { params: Promise<{ id: string }>
   const [resolvedParams, setResolvedParams] = useState<{ id: string } | null>(null);
   const router = useRouter();
   const { token, user } = useAuth();
+  const [report, setReport] = useState<
+    | { targetType: "game" | "review"; targetId: string; targetGameType?: "steam" | "custom"; title?: string }
+    | null
+  >(null);
 
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);
@@ -310,6 +315,23 @@ export default function GameProductPage(props: { params: Promise<{ id: string }>
               </div>
 
               {storeItem ? <ProductActions item={storeItem} /> : null}
+
+              {user?.accountType === "customer" || user?.accountType === "publisher" ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReport({
+                      targetType: "game",
+                      targetId: game.id,
+                      targetGameType: "custom",
+                      title: `Report “${game.name}”`,
+                    })
+                  }
+                  className="inline-flex w-fit items-center justify-center rounded-full border border-white/20 bg-white/5 px-5 py-2 text-sm font-semibold text-white hover:bg-white/10"
+                >
+                  Report game
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -553,6 +575,21 @@ export default function GameProductPage(props: { params: Promise<{ id: string }>
                               </span>
                             </div>
                           </div>
+                          {user?.accountType === "customer" || user?.accountType === "publisher" ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReport({
+                                  targetType: "review",
+                                  targetId: r.id,
+                                  title: "Report review",
+                                })
+                              }
+                              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                            >
+                              Report
+                            </button>
+                          ) : null}
                         </div>
                         <p className="mt-3 whitespace-pre-line text-sm text-white/80">{r.reviewText}</p>
                       </div>
@@ -567,6 +604,15 @@ export default function GameProductPage(props: { params: Promise<{ id: string }>
           </div>
         </div>
       </div>
+
+      <ReportDialog
+        open={Boolean(report)}
+        onClose={() => setReport(null)}
+        targetType={report?.targetType ?? "game"}
+        targetId={report?.targetId ?? ""}
+        targetGameType={report?.targetGameType}
+        title={report?.title}
+      />
     </div>
   );
 }

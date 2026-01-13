@@ -95,6 +95,7 @@ export default function AdminOrdersPage() {
     {key: "manage-orders", title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders"},
     {key: "manage-refunds", title: "Manage Refunds", subtitle: "Review and process refunds", href: "/user/manage-refunds"},
     {key: "manage-reviews", title: "Manage Reviews", subtitle: "Moderate customer reviews", href: "/user/manage-reviews"},
+    {key: "manage-reports", title: "Manage Reports", subtitle: "Moderate reported content", href: "/user/manage-reports"},
   ];
 
   const loadOrders = async () => {
