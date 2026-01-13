@@ -667,7 +667,7 @@ export default function OrdersPage() {
                               ) : null}
                               {refundLoading ? (
                                 <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
-                                  Loading refundsƒ?İ
+                                  Loading refunds...
                                 </span>
                               ) : null}
                             </div>
