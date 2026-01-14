@@ -91,9 +91,10 @@ export default function AdminOrdersPage() {
     {key: "personal", title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile"},
     {key: "manage-accounts", title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/user/manage-accounts"},
     {key: "manage-games", title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games"},
-    {key: "manage-promos", title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos"},
+    {key: "manage-promos", title: "Game Sale", subtitle: "Create and manage promo codes", href: "/user/manage-promos"},
     {key: "manage-orders", title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders"},
     {key: "manage-refunds", title: "Manage Refunds", subtitle: "Review and process refunds", href: "/user/manage-refunds"},
+    {key: "manage-reports", title: "Manage Reports", subtitle: "Review reported items", href: "/user/manage-reports"},
   ];
 
   const loadOrders = async () => {
@@ -384,7 +385,7 @@ export default function AdminOrdersPage() {
                           </p>
                           {promoText ? (
                             <p>
-                              <span className="text-white/55">Promo:</span> {promoText}
+                              <span className="text-white/55">Game Sale:</span> {promoText}
                             </p>
                           ) : null}
                         </div>

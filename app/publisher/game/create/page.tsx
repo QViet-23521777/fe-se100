@@ -51,10 +51,13 @@ export default function CreateGamePage() {
   const pathname = usePathname();
   const { user, token, logout } = useAuth();
 
-  const canAccess = useMemo(
-    () => Boolean(user && token && (user.accountType === "publisher" || user.accountType === "admin")),
-    [token, user]
-  );
+  const canAccess = useMemo(() => {
+    if (!user || !token) return false;
+    return user.accountType === "publisher" || user.accountType === "admin";
+  }, [token, user]);
+
+  const isCustomer = user?.accountType === "customer";
+  const loginHref = "/user/login?next=/user/manage-games";
 
   const sidebarItems: SidebarItem[] = useMemo(() => {
     if (user?.accountType === "admin") {
@@ -62,14 +65,14 @@ export default function CreateGamePage() {
         { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
         { title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/user/manage-accounts" },
         { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
-        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
+        { title: "Game Sale", subtitle: "Create and manage promo codes", href: "/user/manage-promos" },
         { title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders" },
       ];
     }
     return [
       { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
       { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
-      { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
+      { title: "Game Sale", subtitle: "Create and manage promo codes", href: "/user/manage-promos" },
     ];
   }, [user?.accountType]);
 
@@ -158,7 +161,7 @@ export default function CreateGamePage() {
       <div className="min-h-screen bg-[#070f2b] text-white -mx-5 sm:-mx-10">
         <div className="flex w-full flex-col gap-8 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
           <TopBar />
-          <div className="mx-auto max-w-lg rounded-3xl border border-red-500/40 bg-red-500/10 p-6 text-center shadow-xl">
+          <div className="hidden mx-auto max-w-lg rounded-3xl border border-red-500/40 bg-red-500/10 p-6 text-center shadow-xl">
             <p className="mb-4 text-lg text-red-100">Báº¡n cáº§n Ä‘Äƒng nháº­p báº±ng tÃ i khoáº£n Publisher hoáº·c Admin.</p>
             <button
               onClick={() => router.push("/user/login?next=/user/manage-games")}
@@ -166,6 +169,51 @@ export default function CreateGamePage() {
             >
               ÄÄƒng nháº­p
             </button>
+          </div>
+
+          <div className="mx-auto w-full max-w-xl rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-black/20 p-8 text-center shadow-2xl backdrop-blur">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Manage Games</p>
+            <h1 className="mt-2 text-2xl font-semibold">Access denied</h1>
+
+            {!token ? (
+              <p className="mt-3 text-sm text-white/70">
+                Log in with a publisher or admin account to create and manage games.
+              </p>
+            ) : isCustomer ? (
+              <p className="mt-3 text-sm text-white/70">
+                You’re currently logged in with a customer account. Only publisher/admin accounts can manage games.
+              </p>
+            ) : (
+              <p className="mt-3 text-sm text-white/70">Only publisher/admin accounts can manage games.</p>
+            )}
+
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              {token ? (
+                <button
+                  type="button"
+                  onClick={() => router.push("/user/account")}
+                  className="rounded-full border border-white/25 px-5 py-2 text-sm font-semibold text-white hover:bg-white/10"
+                >
+                  Back to My Account
+                </button>
+              ) : null}
+              <Link
+                href="/browse"
+                className="rounded-full border border-white/25 px-5 py-2 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Browse Store
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  router.push(loginHref);
+                }}
+                className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#1b1a55] hover:bg-white/90"
+              >
+                {token ? "Switch account" : "Log in"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

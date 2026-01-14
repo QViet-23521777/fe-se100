@@ -194,8 +194,8 @@ export default function AccountOptionsPage() {
         },
         {
           key: "promos",
-          title: "Manage Promo Codes",
-          subtitle: "Create and manage promotions",
+          title: "Game Sale",
+          subtitle: "Create and manage promo codes",
           href: "/user/manage-promos",
           icon: (props) => <WalletIcon {...props} />,
         },
@@ -211,6 +211,20 @@ export default function AccountOptionsPage() {
           title: "Manage Refunds",
           subtitle: "Review and process refunds",
           href: "/user/manage-refunds",
+          icon: (props) => <WalletIcon {...props} />,
+        },
+        {
+          key: "manage-reports",
+          title: "Manage Reports",
+          subtitle: "Review reported items",
+          href: "/user/manage-reports",
+          icon: (props) => <UserIcon {...props} />,
+        },
+        {
+          key: "statistics",
+          title: "Statistics",
+          subtitle: "Revenue and sales overview",
+          href: "/admin/statistics",
           icon: (props) => <WalletIcon {...props} />,
         },
       ];
@@ -234,9 +248,23 @@ export default function AccountOptionsPage() {
         },
         {
           key: "promos",
-          title: "Manage Promo Codes",
-          subtitle: "Create and manage promotions",
+          title: "Game Sale",
+          subtitle: "Create and manage promo codes",
           href: "/user/manage-promos",
+          icon: (props) => <WalletIcon {...props} />,
+        },
+        {
+          key: "my-reports",
+          title: "My Reports",
+          subtitle: "Track reports you submitted",
+          href: "/user/reports",
+          icon: (props) => <UserIcon {...props} />,
+        },
+        {
+          key: "statistics",
+          title: "Statistics",
+          subtitle: "Revenue and sales overview",
+          href: "/publisher/statistics",
           icon: (props) => <WalletIcon {...props} />,
         },
       ];
@@ -266,10 +294,17 @@ export default function AccountOptionsPage() {
       },
       {
         key: "payments",
-        title: "Payment Methods",
-        subtitle: "Adjust Your Payment Method",
+        title: "Wallet",
+        subtitle: "View your wallet balance",
         href: "/user/payment-methods",
         icon: (props) => <WalletIcon {...props} />,
+      },
+      {
+        key: "my-reports",
+        title: "My Reports",
+        subtitle: "Track reports you submitted",
+        href: "/user/reports",
+        icon: (props) => <UserIcon {...props} />,
       },
     ];
   }, [user?.accountType]);

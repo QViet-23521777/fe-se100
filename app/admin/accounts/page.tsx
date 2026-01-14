@@ -16,6 +16,25 @@ type SidebarLink = {
   href: string;
 };
 
+type CustomerAccountRow = {
+  id: string;
+  email: string;
+  username?: string;
+  name?: string;
+  phoneNumber?: string;
+  accountStatus?: string;
+  accountBalance?: number;
+};
+
+type PublisherAccountRow = {
+  id: string;
+  email: string;
+  publisherName?: string;
+  name?: string;
+  phoneNumber?: string;
+  activityStatus?: string;
+};
+
 function SidebarItem({ item, active }: { item: SidebarLink; active?: boolean }) {
   return (
     <Link
@@ -34,10 +53,17 @@ export default function AdminAccountsPage() {
   const router = useRouter();
   const { user, token } = useAuth();
 
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [publishers, setPublishers] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<CustomerAccountRow[]>([]);
+  const [publishers, setPublishers] = useState<PublisherAccountRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [listMsg, setListMsg] = useState<Message>(null);
+  const [topupOpen, setTopupOpen] = useState(false);
+  const [topupCustomer, setTopupCustomer] = useState<CustomerAccountRow | null>(null);
+  const [topupAmount, setTopupAmount] = useState("");
+  const [topupMsg, setTopupMsg] = useState<Message>(null);
+  const [topupLoading, setTopupLoading] = useState(false);
+  const [lockLoadingId, setLockLoadingId] = useState<string | null>(null);
+  const [lockLoadingType, setLockLoadingType] = useState<"customer" | "publisher" | null>(null);
 
   const [pubForm, setPubForm] = useState({
     publisherName: "",
@@ -93,8 +119,8 @@ export default function AdminAccountsPage() {
         if (!custRes.ok) throw new Error(custData?.message || "Failed to load customers");
         if (!pubRes.ok) throw new Error(pubData?.message || "Failed to load publishers");
         if (!active) return;
-        setCustomers(Array.isArray(custData) ? custData : []);
-        setPublishers(Array.isArray(pubData) ? pubData : []);
+        setCustomers(Array.isArray(custData) ? (custData as CustomerAccountRow[]) : []);
+        setPublishers(Array.isArray(pubData) ? (pubData as PublisherAccountRow[]) : []);
       } catch (err) {
         if (!active) return;
         setListMsg({ type: "error", text: err instanceof Error ? err.message : "Failed to load accounts" });
@@ -202,6 +228,114 @@ export default function AdminAccountsPage() {
     }
   };
 
+  const toggleCustomerLock = async (customer: CustomerAccountRow) => {
+    if (!token) return;
+    const current = String(customer.accountStatus || "Active");
+    const next = current === "Active" ? "Inactive" : "Active";
+    const actionLabel = next === "Inactive" ? "lock" : "unlock";
+    if (!confirm(`Are you sure you want to ${actionLabel} this customer account?`)) return;
+
+    setLockLoadingId(customer.id);
+    setLockLoadingType("customer");
+    setListMsg(null);
+    try {
+      const res = await fetch(gameStoreApiUrl(`/admin/customers/${customer.id}`), {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ accountStatus: next }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || "Failed to update customer status");
+
+      setCustomers((prev) => prev.map((c) => (c.id === customer.id ? { ...c, accountStatus: next } : c)));
+      setListMsg({ type: "success", text: `Customer account ${next === "Inactive" ? "locked" : "unlocked"}.` });
+    } catch (err) {
+      setListMsg({ type: "error", text: err instanceof Error ? err.message : "Failed to update customer status" });
+    } finally {
+      setLockLoadingId(null);
+      setLockLoadingType(null);
+    }
+  };
+
+  const togglePublisherLock = async (publisher: PublisherAccountRow) => {
+    if (!token) return;
+    const current = String(publisher.activityStatus || "Active");
+    const next = current === "Active" ? "Inactive" : "Active";
+    const actionLabel = next === "Inactive" ? "lock" : "unlock";
+    if (!confirm(`Are you sure you want to ${actionLabel} this publisher account?`)) return;
+
+    setLockLoadingId(publisher.id);
+    setLockLoadingType("publisher");
+    setListMsg(null);
+    try {
+      const res = await fetch(gameStoreApiUrl(`/admin/publishers/${publisher.id}`), {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ activityStatus: next }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || "Failed to update publisher status");
+
+      setPublishers((prev) => prev.map((p) => (p.id === publisher.id ? { ...p, activityStatus: next } : p)));
+      setListMsg({ type: "success", text: `Publisher account ${next === "Inactive" ? "locked" : "unlocked"}.` });
+    } catch (err) {
+      setListMsg({ type: "error", text: err instanceof Error ? err.message : "Failed to update publisher status" });
+    } finally {
+      setLockLoadingId(null);
+      setLockLoadingType(null);
+    }
+  };
+
+  const formatUsd = (value: unknown) => {
+    const num = typeof value === "number" && Number.isFinite(value) ? value : 0;
+    return `$${num.toFixed(2)}`;
+  };
+
+  const openTopup = (customer: CustomerAccountRow) => {
+    setTopupCustomer(customer);
+    setTopupAmount("");
+    setTopupMsg(null);
+    setTopupOpen(true);
+  };
+
+  const submitTopup = async () => {
+    if (!token) return;
+    if (!topupCustomer?.id) return;
+
+    const amount = Number(topupAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setTopupMsg({ type: "error", text: "Enter a valid amount (e.g., 10 or 25.50)." });
+      return;
+    }
+
+    setTopupLoading(true);
+    setTopupMsg(null);
+    try {
+      const res = await fetch(gameStoreApiUrl(`/admin/customers/${topupCustomer.id}/wallet/topup`), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ amount }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to top up wallet.");
+      }
+
+      const updated = (data ?? {}) as Partial<CustomerAccountRow>;
+      setCustomers((prev) => prev.map((c) => (c.id === topupCustomer.id ? { ...c, ...updated } : c)));
+      setTopupCustomer((prev) => (prev ? { ...prev, ...updated } : prev));
+      setTopupMsg({ type: "success", text: `Wallet topped up by ${formatUsd(amount)}.` });
+      setTopupAmount("");
+    } catch (err) {
+      setTopupMsg({ type: "error", text: err instanceof Error ? err.message : "Failed to top up wallet." });
+    } finally {
+      setTopupLoading(false);
+    }
+  };
+
   const sidebarLinks: SidebarLink[] = [
     {
       key: "personal",
@@ -223,8 +357,8 @@ export default function AdminAccountsPage() {
     },
     {
       key: "promos",
-      title: "Manage Promo Codes",
-      subtitle: "Create and manage promotions",
+      title: "Game Sale",
+      subtitle: "Create and manage promo codes",
       href: "/user/manage-promos",
     },
     {
@@ -238,6 +372,12 @@ export default function AdminAccountsPage() {
       title: "Manage Refunds",
       subtitle: "Review and process refunds",
       href: "/user/manage-refunds",
+    },
+    {
+      key: "manage-reports",
+      title: "Manage Reports",
+      subtitle: "Review reported items",
+      href: "/user/manage-reports",
     },
   ];
 
@@ -389,6 +529,22 @@ export default function AdminAccountsPage() {
                                 <td className="px-3 py-2">{p.activityStatus || "—"}</td>
                                 <td className="px-3 py-2 text-right">
                                   <button
+                                    type="button"
+                                    onClick={() => togglePublisherLock(p)}
+                                    disabled={lockLoadingType === "publisher" && lockLoadingId === p.id}
+                                    className={`mr-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+                                      String(p.activityStatus || "Active") === "Active"
+                                        ? "border-amber-400/60 text-amber-200 hover:bg-amber-500/10"
+                                        : "border-emerald-400/60 text-emerald-200 hover:bg-emerald-500/10"
+                                    } ${lockLoadingType === "publisher" && lockLoadingId === p.id ? "opacity-60" : ""}`}
+                                  >
+                                    {lockLoadingType === "publisher" && lockLoadingId === p.id
+                                      ? "Saving..."
+                                      : String(p.activityStatus || "Active") === "Active"
+                                        ? "Lock"
+                                        : "Unlock"}
+                                  </button>
+                                  <button
                                     onClick={() => deletePublisher(p.id)}
                                     className="rounded-full border border-red-400/60 px-3 py-1 text-xs font-semibold text-red-200 hover:bg-red-500/10"
                                   >
@@ -413,13 +569,14 @@ export default function AdminAccountsPage() {
                             <th className="px-3 py-2 text-left">Email</th>
                             <th className="px-3 py-2 text-left">Phone</th>
                             <th className="px-3 py-2 text-left">Status</th>
+                            <th className="px-3 py-2 text-left">Wallet</th>
                             <th className="px-3 py-2 text-right">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {customers.length === 0 ? (
                             <tr>
-                              <td className="px-3 py-3 text-white/70" colSpan={5}>
+                              <td className="px-3 py-3 text-white/70" colSpan={6}>
                                 No customers
                               </td>
                             </tr>
@@ -430,7 +587,31 @@ export default function AdminAccountsPage() {
                                 <td className="px-3 py-2">{c.email}</td>
                                 <td className="px-3 py-2">{c.phoneNumber || "—"}</td>
                                 <td className="px-3 py-2">{c.accountStatus || "—"}</td>
+                                <td className="px-3 py-2">{formatUsd(c.accountBalance)}</td>
                                 <td className="px-3 py-2 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => openTopup(c)}
+                                    className="mr-2 rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white hover:bg-white/10"
+                                  >
+                                    Top up
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleCustomerLock(c)}
+                                    disabled={lockLoadingType === "customer" && lockLoadingId === c.id}
+                                    className={`mr-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+                                      String(c.accountStatus || "Active") === "Active"
+                                        ? "border-amber-400/60 text-amber-200 hover:bg-amber-500/10"
+                                        : "border-emerald-400/60 text-emerald-200 hover:bg-emerald-500/10"
+                                    } ${lockLoadingType === "customer" && lockLoadingId === c.id ? "opacity-60" : ""}`}
+                                  >
+                                    {lockLoadingType === "customer" && lockLoadingId === c.id
+                                      ? "Saving..."
+                                      : String(c.accountStatus || "Active") === "Active"
+                                        ? "Lock"
+                                        : "Unlock"}
+                                  </button>
                                   <button
                                     onClick={() => deleteCustomer(c.id)}
                                     className="rounded-full border border-red-400/60 px-3 py-1 text-xs font-semibold text-red-200 hover:bg-red-500/10"
@@ -445,6 +626,84 @@ export default function AdminAccountsPage() {
                       </table>
                     </div>
                   </div>
+
+                  {topupOpen ? (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+                      <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#0c143d] p-6 shadow-2xl">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="text-lg font-semibold">Top up customer wallet</p>
+                            <p className="mt-1 truncate text-sm text-white/70">
+                              {topupCustomer?.email || topupCustomer?.username || topupCustomer?.id || "Customer"}
+                            </p>
+                            <p className="mt-1 text-xs text-white/60">
+                              Current balance: {formatUsd(topupCustomer?.accountBalance)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTopupOpen(false);
+                              setTopupCustomer(null);
+                              setTopupAmount("");
+                              setTopupMsg(null);
+                            }}
+                            className="rounded-full border border-white/20 px-3 py-1 text-xs font-semibold text-white hover:bg-white/10"
+                          >
+                            Close
+                          </button>
+                        </div>
+
+                        <div className="mt-5 space-y-3">
+                          <label className="block text-sm text-white/70">Amount (USD)</label>
+                          <input
+                            className="input"
+                            type="number"
+                            min={0.01}
+                            step={0.01}
+                            value={topupAmount}
+                            onChange={(e) => setTopupAmount(e.target.value)}
+                            placeholder="10.00"
+                          />
+
+                          {topupMsg ? (
+                            <div
+                              className={`rounded-lg border px-4 py-3 text-sm ${
+                                topupMsg.type === "success"
+                                  ? "border-green-400/40 bg-green-500/10 text-green-100"
+                                  : "border-red-400/40 bg-red-500/10 text-red-100"
+                              }`}
+                            >
+                              {topupMsg.text}
+                            </div>
+                          ) : null}
+
+                          <div className="mt-3 flex flex-wrap gap-3">
+                            <button
+                              type="button"
+                              onClick={submitTopup}
+                              disabled={topupLoading}
+                              className="rounded-xl bg-[#1b1a55] px-5 py-3 text-sm font-semibold text-white hover:bg-[#23225e] transition disabled:opacity-60"
+                            >
+                              {topupLoading ? "Topping up..." : "Top up wallet"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTopupOpen(false);
+                                setTopupCustomer(null);
+                                setTopupAmount("");
+                                setTopupMsg(null);
+                              }}
+                              className="rounded-xl border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10 transition"
+                            >
+                              Done
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>

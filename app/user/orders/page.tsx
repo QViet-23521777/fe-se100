@@ -57,6 +57,8 @@ type OrderItemView = {
   name: string;
   quantity: number;
   unitPriceCents: number | null;
+  steamAppId?: number | null;
+  slug?: string | null;
   image?: string;
   keyCodes?: string[];
 };
@@ -188,6 +190,7 @@ function normalizeApiOrders(input: unknown): OrderView[] {
               typeof item.steamAppId === "number" && Number.isFinite(item.steamAppId)
                 ? Math.floor(item.steamAppId)
                 : null;
+            const slug = safeString(item.slug) || null;
             const name = safeString(item.name) || "Unknown game";
             const quantity =
               typeof item.quantity === "number" && Number.isFinite(item.quantity)
@@ -217,6 +220,8 @@ function normalizeApiOrders(input: unknown): OrderView[] {
               name,
               quantity,
               unitPriceCents,
+              steamAppId,
+              slug,
               image: imageUrl || undefined,
               keyCodes: keyCodes?.length ? keyCodes : undefined,
             } satisfies OrderItemView;
@@ -226,6 +231,13 @@ function normalizeApiOrders(input: unknown): OrderView[] {
       const itemsFromDetails: OrderItemView[] = Array.isArray(order.orderDetails)
         ? order.orderDetails.map((detail, idx) => {
             const name = safeString(detail.game?.name) || "Unknown game";
+            const detailGameId = safeString((detail as any)?.gameId ?? (detail as any)?.game?.id) || null;
+            const steamAppId =
+              typeof (detail as any)?.game?.steamAppId === "number"
+                ? Math.floor((detail as any).game.steamAppId)
+                : typeof (detail as any)?.game?.steam_appid === "number"
+                  ? Math.floor((detail as any).game.steam_appid)
+                  : null;
             const quantity =
               typeof detail.quantity === "number" && Number.isFinite(detail.quantity)
                 ? Math.max(1, Math.floor(detail.quantity))
@@ -246,6 +258,8 @@ function normalizeApiOrders(input: unknown): OrderView[] {
               name,
               quantity,
               unitPriceCents: Number.isFinite(unitPriceCents) ? unitPriceCents : null,
+              steamAppId,
+              slug: detailGameId,
               image: imageUrl || undefined,
               keyCodes: keyCode ? [keyCode] : undefined,
             } satisfies OrderItemView;
@@ -328,22 +342,15 @@ function AccountSidebarItem({
         active ? "bg-white/10" : "hover:bg-white/5"
       }`}
     >
-      {active ? (
-        <>
-          <span className="absolute left-0 top-0 h-full w-[3px] bg-white/20" />
-          <span className="absolute right-0 top-0 h-full w-[3px] bg-white/20" />
-        </>
-      ) : null}
-      <p className={`text-lg font-semibold ${active ? "text-white/75" : "text-white"}`}>
-        {title}
-      </p>
+      {active ? <span className="absolute left-0 top-0 h-full w-2 bg-white/20" /> : null}
+      <p className={`text-lg font-semibold ${active ? "text-white/60" : "text-white"}`}>{title}</p>
       <p className="mt-1 text-sm text-white/55">{subtitle}</p>
     </Link>
   );
 }
 
 export default function OrdersPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [mounted, setMounted] = useState(false);
   const [orders, setOrders] = useState<OrderView[]>([]);
@@ -363,6 +370,19 @@ export default function OrdersPage() {
   const [refundReason, setRefundReason] = useState("");
   const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [refundMsg, setRefundMsg] = useState<string | null>(null);
+
+  const isCustomer = user?.accountType === "customer";
+
+  type MyReview = { id: string; gameId: string; rating: number; reviewText: string; updatedAt?: string };
+  const [myReviews, setMyReviews] = useState<Record<string, MyReview>>({});
+  const [reviewModal, setReviewModal] = useState<{
+    gameId: string;
+    title: string;
+  } | null>(null);
+  const [reviewRating, setReviewRating] = useState("5");
+  const [reviewText, setReviewText] = useState("");
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -396,6 +416,152 @@ export default function OrdersPage() {
     setRefundError(null);
     setRefundLoading(false);
   }, [mounted, token]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!token || !isCustomer) {
+      setMyReviews({});
+      return;
+    }
+
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me/reviews"), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = (await res.json().catch(() => null)) as any;
+        if (!res.ok) return;
+
+        const next: Record<string, MyReview> = {};
+        if (Array.isArray(data)) {
+          for (const r of data) {
+            const id = safeString(r?.id);
+            const gameId = safeString(r?.gameId);
+            if (!id || !gameId) continue;
+            next[gameId] = {
+              id,
+              gameId,
+              rating: Number(r?.rating) || 0,
+              reviewText: safeString(r?.reviewText),
+              updatedAt: safeString(r?.updatedAt) || undefined,
+            };
+          }
+        }
+        if (!active) return;
+        setMyReviews(next);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [isCustomer, mounted, token]);
+
+  const isObjectId = (value: string) => /^[a-f0-9]{24}$/i.test(value);
+
+  const openReview = (gameId: string, title: string) => {
+    const existing = myReviews[gameId];
+    setReviewModal({ gameId, title });
+    setReviewMsg(null);
+    setReviewRating(existing ? String(existing.rating || 5) : "5");
+    setReviewText(existing ? existing.reviewText : "");
+  };
+
+  const closeReview = () => {
+    if (reviewSaving) return;
+    setReviewModal(null);
+    setReviewMsg(null);
+    setReviewText("");
+    setReviewRating("5");
+  };
+
+  const saveReview = async () => {
+    if (!token || !isCustomer || !reviewModal) return;
+
+    const rating = Math.max(1, Math.min(5, Math.floor(Number(reviewRating) || 0)));
+    const text = reviewText.trim();
+    if (!text) {
+      setReviewMsg("Review text is required.");
+      return;
+    }
+    if (text.length > 2000) {
+      setReviewMsg("Review text is too long (max 2000).");
+      return;
+    }
+
+    setReviewSaving(true);
+    setReviewMsg(null);
+    try {
+      const existing = myReviews[reviewModal.gameId];
+      const url = existing
+        ? gameStoreApiUrl(`/customers/me/reviews/${existing.id}`)
+        : gameStoreApiUrl(`/customers/me/games/${reviewModal.gameId}/reviews`);
+      const method = existing ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ rating, reviewText: text }),
+      });
+      const data = (await res.json().catch(() => null)) as any;
+      if (!res.ok) throw new Error(data?.message || "Failed to save review");
+
+      const id = safeString(data?.id) || existing?.id;
+      if (id) {
+        setMyReviews((prev) => ({
+          ...prev,
+          [reviewModal.gameId]: {
+            id,
+            gameId: reviewModal.gameId,
+            rating,
+            reviewText: text,
+            updatedAt: safeString(data?.updatedAt) || new Date().toISOString(),
+          },
+        }));
+      }
+
+      setReviewMsg("Saved.");
+      closeReview();
+    } catch (err) {
+      setReviewMsg(err instanceof Error ? err.message : "Failed to save review");
+    } finally {
+      setReviewSaving(false);
+    }
+  };
+
+  const deleteReview = async () => {
+    if (!token || !isCustomer || !reviewModal) return;
+    const existing = myReviews[reviewModal.gameId];
+    if (!existing) return;
+    if (!confirm("Delete your review?")) return;
+
+    setReviewSaving(true);
+    setReviewMsg(null);
+    try {
+      const res = await fetch(gameStoreApiUrl(`/customers/me/reviews/${existing.id}`), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as any;
+        throw new Error(data?.message || "Failed to delete review");
+      }
+      setMyReviews((prev) => {
+        const next = { ...prev };
+        delete next[reviewModal.gameId];
+        return next;
+      });
+      closeReview();
+    } catch (err) {
+      setReviewMsg(err instanceof Error ? err.message : "Failed to delete review");
+    } finally {
+      setReviewSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!mounted) return;
@@ -559,25 +725,26 @@ export default function OrdersPage() {
             <div className="divide-y divide-white/10">
               <AccountSidebarItem
                 title="Personal Information"
-                subtitle="Modify Your Personal Information"
+                subtitle="Modify your personal information"
                 href="/user/profile"
               />
               <AccountSidebarItem
                 title="My Orders"
-                subtitle="View Your Previous Orders"
+                subtitle="View your previous orders"
                 href="/user/orders"
                 active
               />
               <AccountSidebarItem
                 title="Wishlist"
-                subtitle="View Games You Added in Wishlist"
+                subtitle="View your saved games"
                 href="/wishlist"
               />
               <AccountSidebarItem
-                title="Payment Methods"
-                subtitle="Adjust Your Payment Method"
+                title="Wallet"
+                subtitle="View your wallet balance"
                 href="/user/payment-methods"
               />
+              <AccountSidebarItem title="My Reports" subtitle="Track reports you submitted" href="/user/reports" />
             </div>
           </aside>
 
@@ -749,6 +916,21 @@ export default function OrdersPage() {
                                     </div>
                                   </div>
 
+                                  {paymentStatus.toLowerCase() === "completed" &&
+                                  isCustomer &&
+                                  item.slug &&
+                                  isObjectId(String(item.slug)) ? (
+                                    <div className="flex flex-wrap items-center justify-end gap-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => openReview(String(item.slug), item.name)}
+                                        className="rounded-full border border-white/25 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                                      >
+                                        {myReviews[String(item.slug)] ? "Edit review" : "Write review"}
+                                      </button>
+                                    </div>
+                                  ) : null}
+
                                   {item.keyCodes?.length ? (
                                     <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/80">
                                       <p className="font-semibold">
@@ -854,6 +1036,103 @@ export default function OrdersPage() {
                     disabled={refundSubmitting}
                   >
                     {refundSubmitting ? "Submitting…" : "Submit request"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {reviewModal ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-[#0c143d] p-6 text-white shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold tracking-wide text-white/60">REVIEW</p>
+                  <p className="mt-1 text-2xl font-semibold truncate">{reviewModal.title}</p>
+                  <p className="mt-2 text-sm text-white/70">Reviews are available for purchased games only.</p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
+                  onClick={closeReview}
+                  disabled={reviewSaving}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-white/90">Rating</label>
+                  <select
+                    value={reviewRating}
+                    onChange={(e) => setReviewRating(e.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm text-white outline-none [color-scheme:dark]"
+                    disabled={reviewSaving}
+                  >
+                    <option value="5">5 - Excellent</option>
+                    <option value="4">4 - Good</option>
+                    <option value="3">3 - Okay</option>
+                    <option value="2">2 - Bad</option>
+                    <option value="1">1 - Terrible</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-semibold text-white/90">Review</label>
+                    <span className="text-xs text-white/50">{reviewText.trim().length}/2000</span>
+                  </div>
+                  <textarea
+                    value={reviewText}
+                    onChange={(e) => setReviewText(e.target.value)}
+                    rows={5}
+                    maxLength={2000}
+                    className="mt-2 w-full resize-none rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/20"
+                    placeholder="Write your review..."
+                    disabled={reviewSaving}
+                  />
+                </div>
+
+                {reviewMsg ? (
+                  <div
+                    className={`rounded-2xl border p-4 text-sm ${
+                      reviewMsg.toLowerCase().includes("failed") || reviewMsg.toLowerCase().includes("error")
+                        ? "border-red-400/30 bg-red-500/10 text-red-100"
+                        : "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                    }`}
+                  >
+                    {reviewMsg}
+                  </div>
+                ) : null}
+
+                <div className="flex flex-wrap justify-end gap-3 pt-2">
+                  {myReviews[reviewModal.gameId] ? (
+                    <button
+                      type="button"
+                      className="rounded-full border border-red-400/50 bg-red-500/10 px-6 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-70"
+                      onClick={() => void deleteReview()}
+                      disabled={reviewSaving}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/20 bg-white/5 px-6 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-70"
+                    onClick={closeReview}
+                    disabled={reviewSaving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full bg-white px-6 py-2 text-sm font-semibold text-[#1b1a55] disabled:opacity-70"
+                    onClick={() => void saveReview()}
+                    disabled={reviewSaving}
+                  >
+                    {reviewSaving ? "Saving..." : "Save"}
                   </button>
                 </div>
               </div>

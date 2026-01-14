@@ -6,12 +6,45 @@ import { usePathname } from "next/navigation";
 import { TopBarSearch } from "@/components/TopBarSearch";
 import { useStore } from "@/app/context/StoreContext";
 import { useAuth } from "@/app/context/AuthContext";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
 
 type Props = {
   active?: "home" | "browse" | "news" | "publisher" | "about";
 };
 
 const logo = "/assets/figma-logo.svg";
+const WALLET_CACHE_KEY = "gameverse_wallet_balance_cache_v1";
+const WALLET_CACHE_TTL_MS = 60_000;
+
+function formatUsd(value: number) {
+  return `$${value.toFixed(2)}`;
+}
+
+function readWalletCache(): { balance: number; ts: number } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(WALLET_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    const balance = (parsed as any).balance;
+    const ts = (parsed as any).ts;
+    if (typeof balance !== "number" || !Number.isFinite(balance)) return null;
+    if (typeof ts !== "number" || !Number.isFinite(ts)) return null;
+    return { balance, ts };
+  } catch {
+    return null;
+  }
+}
+
+function writeWalletCache(balance: number) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(WALLET_CACHE_KEY, JSON.stringify({ balance, ts: Date.now() }));
+  } catch {
+    // ignore
+  }
+}
 
 function CartIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -84,6 +117,8 @@ export function TopBar({ active = "home" }: Props) {
   const { user, token } = useAuth();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [walletLoading, setWalletLoading] = useState(false);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
@@ -118,6 +153,49 @@ export function TopBar({ active = "home" }: Props) {
   );
 
   const showAuthed = mounted && Boolean(user) && Boolean(token);
+  const showWallet = showAuthed && user?.accountType === "customer";
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!token || !showWallet) {
+      setWalletBalance(null);
+      setWalletLoading(false);
+      return;
+    }
+
+    const cached = readWalletCache();
+    if (cached && Date.now() - cached.ts < WALLET_CACHE_TTL_MS) {
+      setWalletBalance(cached.balance);
+    }
+
+    let active = true;
+    const load = async () => {
+      setWalletLoading(true);
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me"), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) return;
+        const balance = typeof (data as any)?.accountBalance === "number" ? (data as any).accountBalance : 0;
+        if (!active) return;
+        setWalletBalance(balance);
+        writeWalletCache(balance);
+      } finally {
+        if (active) setWalletLoading(false);
+      }
+    };
+
+    void load();
+
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [mounted, showWallet, token]);
 
   const links: { href: string; label: string; key: Props["active"] }[] = [
     { href: "/", label: "Home", key: "home" },
@@ -149,6 +227,24 @@ export function TopBar({ active = "home" }: Props) {
 
       <div className="flex flex-1 items-center justify-end gap-3">
         <TopBarSearch className="hidden flex-1 max-w-md sm:block" />
+
+        {showWallet ? (
+          <Link
+            href="/user/payment-methods"
+            className="hidden items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10 sm:inline-flex"
+            aria-label="Wallet balance"
+            title="Wallet balance"
+          >
+            <span className="text-white/70">Wallet</span>
+            <span className="font-martian-mono text-white">
+              {walletLoading
+                ? "..."
+                : typeof walletBalance === "number" && Number.isFinite(walletBalance)
+                  ? formatUsd(walletBalance)
+                  : "$0.00"}
+            </span>
+          </Link>
+        ) : null}
 
         {showAuthed ? null : (
           <>

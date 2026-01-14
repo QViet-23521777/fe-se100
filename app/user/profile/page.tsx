@@ -21,6 +21,7 @@ type CustomerProfile = {
   email?: string;
   username?: string;
   phoneNumber?: string;
+  accountBalance?: number;
 };
 
 type Message = { type: "success" | "error"; text: string };
@@ -195,28 +196,40 @@ export default function ProfilePage() {
     return `${base}-#${gamerNumber}`;
   }, [mounted, form.username, gamerNumber, user?.name]);
 
+  const walletLabel = useMemo(() => {
+    if (user?.accountType !== "customer") return "";
+    const bal = profile?.accountBalance;
+    if (typeof bal !== "number" || !Number.isFinite(bal)) return "$0.00";
+    return `$${bal.toFixed(2)}`;
+  }, [profile?.accountBalance, user?.accountType]);
+
   const sidebarItems = useMemo(() => {
     if (user?.accountType === "admin") {
       return [
         { title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
         { title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/user/manage-accounts" },
         { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
-        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
+        { title: "Game Sale", subtitle: "Create and manage promo codes", href: "/user/manage-promos" },
         { title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders" },
+        { title: "Manage Reports", subtitle: "Review reported items", href: "/user/manage-reports" },
+        { title: "Statistics", subtitle: "Revenue and sales overview", href: "/admin/statistics" },
       ];
     }
     if (user?.accountType === "publisher") {
       return [
         { title: "Personal Information", subtitle: "Modify Your Personal Information", href: "/user/profile" },
         { title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
-        { title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
+        { title: "Game Sale", subtitle: "Create and manage promo codes", href: "/user/manage-promos" },
+        { title: "Statistics", subtitle: "Revenue and sales overview", href: "/publisher/statistics" },
+        { title: "My Reports", subtitle: "Track reports you submitted", href: "/user/reports" },
       ];
     }
     return [
       { title: "Personal Information", subtitle: "Modify Your Personal Information", href: "/user/profile" },
       { title: "My Orders", subtitle: "View Your Previous Orders", href: "/user/orders" },
       { title: "Wishlist", subtitle: "View Games You Added in Wishlist", href: "/wishlist" },
-      { title: "Payment Methods", subtitle: "Adjust Your Payment Method", href: "/user/payment-methods" },
+      { title: "Wallet", subtitle: "View your wallet balance", href: "/user/payment-methods" },
+      { title: "My Reports", subtitle: "Track reports you submitted", href: "/user/reports" },
     ];
   }, [user?.accountType]);
 
@@ -350,6 +363,21 @@ export default function ProfilePage() {
                   <p className="text-xs text-cyan-300">Number Verified</p>
                 </div>
               </div>
+
+              {user?.accountType === "customer" ? (
+                <div className="space-y-2">
+                  <p className="text-xl font-semibold">Wallet Balance</p>
+                  <Input
+                    name="wallet"
+                    value={walletLabel}
+                    readOnly
+                    placeholder="$0.00"
+                  />
+                  <p className="text-xs text-white/70">
+                    Wallet is used for checkout. Ask an admin to add funds to your wallet.
+                  </p>
+                </div>
+              ) : null}
 
               <div className="space-y-1">
                 <p className="text-xl font-semibold">Password</p>

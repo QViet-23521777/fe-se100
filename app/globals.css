@@ -159,7 +159,7 @@
     }
   }
 
-  header {
+  header.site-header {
     @apply glass sticky top-0 z-50;
 
     nav {

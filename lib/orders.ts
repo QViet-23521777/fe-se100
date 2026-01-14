@@ -1,6 +1,6 @@
 import type { CartLine } from "@/app/context/StoreContext";
 
-export type PaymentBrand = "visa" | "mastercard" | "paypal" | "payoneer";
+export type PaymentBrand = "wallet" | "visa" | "mastercard" | "paypal" | "payoneer";
 
 export type OrderRecord = {
   id: string;
