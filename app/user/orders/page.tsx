@@ -146,7 +146,9 @@ function normalizeRefundRequestsByOrderId(input: unknown) {
 
     const requestedAt = safeString(raw?.requestedAt);
     const existing = byOrder[orderId];
-    const existingDate = existing?.requestedAt ? new Date(existing.requestedAt).getTime() : 0;
+    const existingDate = existing?.requestedAt
+      ? new Date(existing.requestedAt).getTime()
+      : 0;
     const nextDate = requestedAt ? new Date(requestedAt).getTime() : 0;
 
     if (existing && existingDate >= nextDate) continue;
@@ -181,27 +183,32 @@ function normalizeApiOrders(input: unknown): OrderView[] {
         typeof order.totalCents === "number"
           ? parseCentsValue(order.totalCents)
           : parseAmountToCents(
-              typeof order.totalAmount === "number" ? order.totalAmount : order.totalValue
+              typeof order.totalAmount === "number"
+                ? order.totalAmount
+                : order.totalValue
             );
 
       const itemsFromEmbedded: OrderItemView[] = Array.isArray(order.items)
         ? order.items.map((item, idx) => {
             const steamAppId =
-              typeof item.steamAppId === "number" && Number.isFinite(item.steamAppId)
+              typeof item.steamAppId === "number" &&
+              Number.isFinite(item.steamAppId)
                 ? Math.floor(item.steamAppId)
                 : null;
             const slug = safeString(item.slug) || null;
             const name = safeString(item.name) || "Unknown game";
             const quantity =
-              typeof item.quantity === "number" && Number.isFinite(item.quantity)
+              typeof item.quantity === "number" &&
+              Number.isFinite(item.quantity)
                 ? Math.max(1, Math.floor(item.quantity))
                 : 1;
             const unitPriceCents =
-              typeof item.unitPriceCents === "number" && Number.isFinite(item.unitPriceCents)
+              typeof item.unitPriceCents === "number" &&
+              Number.isFinite(item.unitPriceCents)
                 ? parseCentsValue(item.unitPriceCents)
                 : typeof item.unitPrice === "number"
-                  ? parseAmountToCents(item.unitPrice)
-                  : null;
+                ? parseAmountToCents(item.unitPrice)
+                : null;
 
             const imageUrl =
               safeString(item.image) ||
@@ -212,8 +219,8 @@ function normalizeApiOrders(input: unknown): OrderView[] {
             const keyCodes = Array.isArray(item.keyCodes)
               ? item.keyCodes.map((code) => safeString(code)).filter(Boolean)
               : safeString(item.keyCode)
-                ? [safeString(item.keyCode)]
-                : undefined;
+              ? [safeString(item.keyCode)]
+              : undefined;
 
             return {
               id: `${id || "api"}_${idx}`,
@@ -228,18 +235,24 @@ function normalizeApiOrders(input: unknown): OrderView[] {
           })
         : [];
 
-      const itemsFromDetails: OrderItemView[] = Array.isArray(order.orderDetails)
+      const itemsFromDetails: OrderItemView[] = Array.isArray(
+        order.orderDetails
+      )
         ? order.orderDetails.map((detail, idx) => {
             const name = safeString(detail.game?.name) || "Unknown game";
-            const detailGameId = safeString((detail as any)?.gameId ?? (detail as any)?.game?.id) || null;
+            const detailGameId =
+              safeString(
+                (detail as any)?.gameId ?? (detail as any)?.game?.id
+              ) || null;
             const steamAppId =
               typeof (detail as any)?.game?.steamAppId === "number"
                 ? Math.floor((detail as any).game.steamAppId)
                 : typeof (detail as any)?.game?.steam_appid === "number"
-                  ? Math.floor((detail as any).game.steam_appid)
-                  : null;
+                ? Math.floor((detail as any).game.steam_appid)
+                : null;
             const quantity =
-              typeof detail.quantity === "number" && Number.isFinite(detail.quantity)
+              typeof detail.quantity === "number" &&
+              Number.isFinite(detail.quantity)
                 ? Math.max(1, Math.floor(detail.quantity))
                 : 1;
             const unitPriceCents = parseAmountToCents(detail.unitPrice);
@@ -250,14 +263,16 @@ function normalizeApiOrders(input: unknown): OrderView[] {
               (typeof detail.game?.steamAppId === "number"
                 ? `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${detail.game.steamAppId}/header.jpg`
                 : typeof detail.game?.steam_appid === "number"
-                  ? `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${detail.game.steam_appid}/header.jpg`
-                  : "");
+                ? `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${detail.game.steam_appid}/header.jpg`
+                : "");
 
             return {
               id: safeString(detail.id) || `${id || "api"}_${idx}`,
               name,
               quantity,
-              unitPriceCents: Number.isFinite(unitPriceCents) ? unitPriceCents : null,
+              unitPriceCents: Number.isFinite(unitPriceCents)
+                ? unitPriceCents
+                : null,
               steamAppId,
               slug: detailGameId,
               image: imageUrl || undefined,
@@ -266,7 +281,9 @@ function normalizeApiOrders(input: unknown): OrderView[] {
           })
         : [];
 
-      const items = itemsFromEmbedded.length ? itemsFromEmbedded : itemsFromDetails;
+      const items = itemsFromEmbedded.length
+        ? itemsFromEmbedded
+        : itemsFromDetails;
       const paymentStatus = safeString(order.paymentStatus) || "Pending";
 
       return {
@@ -342,8 +359,16 @@ function AccountSidebarItem({
         active ? "bg-white/10" : "hover:bg-white/5"
       }`}
     >
-      {active ? <span className="absolute left-0 top-0 h-full w-2 bg-white/20" /> : null}
-      <p className={`text-lg font-semibold ${active ? "text-white/60" : "text-white"}`}>{title}</p>
+      {active ? (
+        <span className="absolute left-0 top-0 h-full w-2 bg-white/20" />
+      ) : null}
+      <p
+        className={`text-lg font-semibold ${
+          active ? "text-white/60" : "text-white"
+        }`}
+      >
+        {title}
+      </p>
       <p className="mt-1 text-sm text-white/55">{subtitle}</p>
     </Link>
   );
@@ -366,14 +391,24 @@ export default function OrdersPage() {
   const [refundLoading, setRefundLoading] = useState(false);
   const [refundError, setRefundError] = useState<string | null>(null);
 
-  const [refundModalOrder, setRefundModalOrder] = useState<OrderView | null>(null);
+  const [refundModalOrder, setRefundModalOrder] = useState<OrderView | null>(
+    null
+  );
   const [refundReason, setRefundReason] = useState("");
   const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [refundMsg, setRefundMsg] = useState<string | null>(null);
 
   const isCustomer = user?.accountType === "customer";
+  const starsText = (value: number) =>
+    "\u2605".repeat(value) + "\u2606".repeat(5 - value);
 
-  type MyReview = { id: string; gameId: string; rating: number; reviewText: string; updatedAt?: string };
+  type MyReview = {
+    id: string;
+    gameId: string;
+    rating: number;
+    reviewText: string;
+    updatedAt?: string;
+  };
   const [myReviews, setMyReviews] = useState<Record<string, MyReview>>({});
   const [reviewModal, setReviewModal] = useState<{
     gameId: string;
@@ -482,7 +517,10 @@ export default function OrdersPage() {
   const saveReview = async () => {
     if (!token || !isCustomer || !reviewModal) return;
 
-    const rating = Math.max(1, Math.min(5, Math.floor(Number(reviewRating) || 0)));
+    const rating = Math.max(
+      1,
+      Math.min(5, Math.floor(Number(reviewRating) || 0))
+    );
     const text = reviewText.trim();
     if (!text) {
       setReviewMsg("Review text is required.");
@@ -504,7 +542,10 @@ export default function OrdersPage() {
 
       const res = await fetch(url, {
         method,
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ rating, reviewText: text }),
       });
       const data = (await res.json().catch(() => null)) as any;
@@ -527,7 +568,9 @@ export default function OrdersPage() {
       setReviewMsg("Saved.");
       closeReview();
     } catch (err) {
-      setReviewMsg(err instanceof Error ? err.message : "Failed to save review");
+      setReviewMsg(
+        err instanceof Error ? err.message : "Failed to save review"
+      );
     } finally {
       setReviewSaving(false);
     }
@@ -542,10 +585,13 @@ export default function OrdersPage() {
     setReviewSaving(true);
     setReviewMsg(null);
     try {
-      const res = await fetch(gameStoreApiUrl(`/customers/me/reviews/${existing.id}`), {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(
+        gameStoreApiUrl(`/customers/me/reviews/${existing.id}`),
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as any;
         throw new Error(data?.message || "Failed to delete review");
@@ -557,7 +603,9 @@ export default function OrdersPage() {
       });
       closeReview();
     } catch (err) {
-      setReviewMsg(err instanceof Error ? err.message : "Failed to delete review");
+      setReviewMsg(
+        err instanceof Error ? err.message : "Failed to delete review"
+      );
     } finally {
       setReviewSaving(false);
     }
@@ -589,7 +637,9 @@ export default function OrdersPage() {
       } catch (err) {
         console.error(err);
         if (!active) return;
-        setApiError(err instanceof Error ? err.message : "Failed to load server orders.");
+        setApiError(
+          err instanceof Error ? err.message : "Failed to load server orders."
+        );
       } finally {
         if (active) setLoadingApi(false);
       }
@@ -609,10 +659,13 @@ export default function OrdersPage() {
       setRefundLoading(true);
       setRefundError(null);
       try {
-        const res = await fetch(gameStoreApiUrl("/customers/me/refund-requests"), {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-        });
+        const res = await fetch(
+          gameStoreApiUrl("/customers/me/refund-requests"),
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
+          }
+        );
         const data = (await res.json().catch(() => null)) as unknown;
         if (!res.ok) {
           const message =
@@ -626,7 +679,9 @@ export default function OrdersPage() {
       } catch (err) {
         console.error(err);
         if (!active) return;
-        setRefundError(err instanceof Error ? err.message : "Failed to load refund requests.");
+        setRefundError(
+          err instanceof Error ? err.message : "Failed to load refund requests."
+        );
       } finally {
         if (active) setRefundLoading(false);
       }
@@ -661,7 +716,9 @@ export default function OrdersPage() {
     try {
       const orderId = refundModalOrder.id;
       const res = await fetch(
-        gameStoreApiUrl(`/customers/me/orders/${encodeURIComponent(orderId)}/refund-requests`),
+        gameStoreApiUrl(
+          `/customers/me/orders/${encodeURIComponent(orderId)}/refund-requests`
+        ),
         {
           method: "POST",
           headers: {
@@ -690,7 +747,9 @@ export default function OrdersPage() {
       setRefundModalOrder(null);
       setRefundMsg("Refund request submitted. An admin will review it soon.");
     } catch (err) {
-      setRefundMsg(err instanceof Error ? err.message : "Failed to create refund request.");
+      setRefundMsg(
+        err instanceof Error ? err.message : "Failed to create refund request."
+      );
     } finally {
       setRefundSubmitting(false);
     }
@@ -744,7 +803,11 @@ export default function OrdersPage() {
                 subtitle="View your wallet balance"
                 href="/user/payment-methods"
               />
-              <AccountSidebarItem title="My Reports" subtitle="Track reports you submitted" href="/user/reports" />
+              <AccountSidebarItem
+                title="My Reports"
+                subtitle="Track reports you submitted"
+                href="/user/reports"
+              />
             </div>
           </aside>
 
@@ -779,14 +842,20 @@ export default function OrdersPage() {
               <div className="space-y-5">
                 {orders.map((order) => {
                   const isExpanded = expandedId === order.id;
-                  const paymentStatus = safeString(order.paymentStatus) || "Pending";
+                  const paymentStatus =
+                    safeString(order.paymentStatus) || "Pending";
                   const refundReq = refundRequestsByOrderId[order.id];
                   const refundEligible = refundableOrderIds.has(order.id);
                   return (
-                    <div key={order.id} className="rounded-3xl bg-[#0c143d]/30 p-4">
+                    <div
+                      key={order.id}
+                      className="rounded-3xl bg-[#0c143d]/30 p-4"
+                    >
                       <button
                         type="button"
-                        onClick={() => setExpandedId(isExpanded ? null : order.id)}
+                        onClick={() =>
+                          setExpandedId(isExpanded ? null : order.id)
+                        }
                         className="w-full rounded-2xl border border-white/10 bg-gradient-to-b from-white/12 to-black/25 px-6 py-5 text-left shadow-xl backdrop-blur transition hover:border-white/20"
                         aria-expanded={isExpanded}
                       >
@@ -822,7 +891,9 @@ export default function OrdersPage() {
                             <div className="flex flex-wrap items-center gap-2 text-sm text-white/80">
                               <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
                                 Status:{" "}
-                                <span className="font-semibold text-white">{paymentStatus}</span>
+                                <span className="font-semibold text-white">
+                                  {paymentStatus}
+                                </span>
                               </span>
                               {refundReq ? (
                                 <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
@@ -834,7 +905,7 @@ export default function OrdersPage() {
                               ) : null}
                               {refundLoading ? (
                                 <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
-                                  Loading refunds...
+                                  Loading refundsƒ?İ
                                 </span>
                               ) : null}
                             </div>
@@ -856,13 +927,15 @@ export default function OrdersPage() {
                                 <span className="text-xs text-white/50">
                                   {paymentStatus.toLowerCase() === "refunded"
                                     ? "Already refunded."
-                                    : paymentStatus.toLowerCase() !== "completed"
-                                      ? "Refund available for completed orders only."
-                                      : refundReq?.status?.toLowerCase() === "pending"
-                                        ? "Refund request pending."
-                                        : !isWithinRefundWindow(order.dateIso)
-                                          ? `Refund window is ${REFUND_WINDOW_DAYS} days.`
-                                          : null}
+                                    : paymentStatus.toLowerCase() !==
+                                      "completed"
+                                    ? "Refund available for completed orders only."
+                                    : refundReq?.status?.toLowerCase() ===
+                                      "pending"
+                                    ? "Refund request pending."
+                                    : !isWithinRefundWindow(order.dateIso)
+                                    ? `Refund window is ${REFUND_WINDOW_DAYS} days.`
+                                    : null}
                                 </span>
                               )}
                             </div>
@@ -870,14 +943,18 @@ export default function OrdersPage() {
 
                           {refundReq?.resolutionNote ? (
                             <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
-                              <p className="font-semibold text-white">Refund note</p>
+                              <p className="font-semibold text-white">
+                                Refund note
+                              </p>
                               <p className="mt-1 text-white/70">
                                 {refundReq.resolutionNote}
                               </p>
                             </div>
                           ) : null}
 
-                          <p className="text-sm font-semibold text-white">Order items</p>
+                          <p className="text-sm font-semibold text-white">
+                            Order items
+                          </p>
 
                           {order.items.length === 0 ? (
                             <p className="mt-4 text-sm text-white/70">
@@ -910,23 +987,33 @@ export default function OrdersPage() {
                                       <p className="mt-1 text-xs text-white/60">
                                         Qty: {item.quantity}
                                         {item.unitPriceCents !== null
-                                          ? ` • ${formatCents(item.unitPriceCents)}`
+                                          ? ` • ${formatCents(
+                                              item.unitPriceCents
+                                            )}`
                                           : ""}
                                       </p>
                                     </div>
                                   </div>
 
-                                  {paymentStatus.toLowerCase() === "completed" &&
+                                  {paymentStatus.toLowerCase() ===
+                                    "completed" &&
                                   isCustomer &&
                                   item.slug &&
                                   isObjectId(String(item.slug)) ? (
                                     <div className="flex flex-wrap items-center justify-end gap-3">
                                       <button
                                         type="button"
-                                        onClick={() => openReview(String(item.slug), item.name)}
+                                        onClick={() =>
+                                          openReview(
+                                            String(item.slug),
+                                            item.name
+                                          )
+                                        }
                                         className="rounded-full border border-white/25 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
                                       >
-                                        {myReviews[String(item.slug)] ? "Edit review" : "Write review"}
+                                        {myReviews[String(item.slug)]
+                                          ? "Edit review"
+                                          : "Write review"}
                                       </button>
                                     </div>
                                   ) : null}
@@ -934,14 +1021,20 @@ export default function OrdersPage() {
                                   {item.keyCodes?.length ? (
                                     <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/80">
                                       <p className="font-semibold">
-                                        Key{item.keyCodes.length === 1 ? "" : "s"}:
+                                        Key
+                                        {item.keyCodes.length === 1 ? "" : "s"}:
                                       </p>
                                       <div className="mt-1 space-y-1">
-                                        {item.keyCodes.slice(0, 3).map((code) => (
-                                          <p key={code} className="font-mono text-white/90">
-                                            {code}
-                                          </p>
-                                        ))}
+                                        {item.keyCodes
+                                          .slice(0, 3)
+                                          .map((code) => (
+                                            <p
+                                              key={code}
+                                              className="font-mono text-white/90"
+                                            >
+                                              {code}
+                                            </p>
+                                          ))}
                                         {item.keyCodes.length > 3 ? (
                                           <p className="text-white/50">
                                             +{item.keyCodes.length - 3} more
@@ -972,7 +1065,9 @@ export default function OrdersPage() {
                   <p className="text-xs font-semibold tracking-wide text-white/60">
                     REFUND REQUEST
                   </p>
-                  <p className="mt-1 text-2xl font-semibold">Request a refund</p>
+                  <p className="mt-1 text-2xl font-semibold">
+                    Request a refund
+                  </p>
                   <p className="mt-2 text-sm text-white/70">
                     This will create a refund request for order{" "}
                     <span className="font-semibold text-white">
@@ -1003,8 +1098,9 @@ export default function OrdersPage() {
                   placeholder="Tell us why you want a refund…"
                 />
                 <p className="text-xs text-white/50">
-                  Refunds are available within {REFUND_WINDOW_DAYS} days for completed
-                  orders. Approved refunds are credited to your account balance.
+                  Refunds are available within {REFUND_WINDOW_DAYS} days for
+                  completed orders. Approved refunds are credited to your
+                  account balance.
                 </p>
 
                 {refundMsg ? (
@@ -1048,9 +1144,15 @@ export default function OrdersPage() {
             <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-[#0c143d] p-6 text-white shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold tracking-wide text-white/60">REVIEW</p>
-                  <p className="mt-1 text-2xl font-semibold truncate">{reviewModal.title}</p>
-                  <p className="mt-2 text-sm text-white/70">Reviews are available for purchased games only.</p>
+                  <p className="text-xs font-semibold tracking-wide text-white/60">
+                    REVIEW
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold truncate">
+                    {reviewModal.title}
+                  </p>
+                  <p className="mt-2 text-sm text-white/70">
+                    Reviews are available for purchased games only.
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -1064,25 +1166,31 @@ export default function OrdersPage() {
 
               <div className="mt-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-white/90">Rating</label>
+                  <label className="block text-sm font-semibold text-white/90">
+                    Rating
+                  </label>
                   <select
                     value={reviewRating}
                     onChange={(e) => setReviewRating(e.target.value)}
                     className="mt-2 w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm text-white outline-none [color-scheme:dark]"
                     disabled={reviewSaving}
                   >
-                    <option value="5">5 - Excellent</option>
-                    <option value="4">4 - Good</option>
-                    <option value="3">3 - Okay</option>
-                    <option value="2">2 - Bad</option>
-                    <option value="1">1 - Terrible</option>
+                    <option value="5">{starsText(5)}</option>
+                    <option value="4">{starsText(4)}</option>
+                    <option value="3">{starsText(3)}</option>
+                    <option value="2">{starsText(2)}</option>
+                    <option value="1">{starsText(1)}</option>
                   </select>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between">
-                    <label className="block text-sm font-semibold text-white/90">Review</label>
-                    <span className="text-xs text-white/50">{reviewText.trim().length}/2000</span>
+                    <label className="block text-sm font-semibold text-white/90">
+                      Review
+                    </label>
+                    <span className="text-xs text-white/50">
+                      {reviewText.trim().length}/2000
+                    </span>
                   </div>
                   <textarea
                     value={reviewText}
@@ -1098,7 +1206,8 @@ export default function OrdersPage() {
                 {reviewMsg ? (
                   <div
                     className={`rounded-2xl border p-4 text-sm ${
-                      reviewMsg.toLowerCase().includes("failed") || reviewMsg.toLowerCase().includes("error")
+                      reviewMsg.toLowerCase().includes("failed") ||
+                      reviewMsg.toLowerCase().includes("error")
                         ? "border-red-400/30 bg-red-500/10 text-red-100"
                         : "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
                     }`}
@@ -1147,9 +1256,9 @@ export default function OrdersPage() {
               <span className="text-xl font-semibold">GameVerse</span>
             </div>
             <div className="space-y-2 max-w-xl text-sm text-white/80">
-              GameVerse — Where every gamer levels up! From epic AAA adventures to indie
-              gems, grab the hottest deals on PC, Xbox, PlayStation & Nintendo. Play
-              more, pay less.
+              GameVerse — Where every gamer levels up! From epic AAA adventures
+              to indie gems, grab the hottest deals on PC, Xbox, PlayStation &
+              Nintendo. Play more, pay less.
             </div>
             <div className="grid grid-cols-2 gap-10 text-sm">
               <div className="space-y-2">
@@ -1181,7 +1290,13 @@ export default function OrdersPage() {
             </p>
             <div className="flex items-center gap-3">
               {socials.map((icon) => (
-                <img key={icon} src={icon} alt="social" className="h-8 w-8" loading="lazy" />
+                <img
+                  key={icon}
+                  src={icon}
+                  alt="social"
+                  className="h-8 w-8"
+                  loading="lazy"
+                />
               ))}
             </div>
           </div>
