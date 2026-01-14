@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TopBar } from "@/components/TopBar";
 import { ProductActions } from "@/components/StoreActions";
 import { ReportButton } from "@/components/ReportButton";
+import { StarRating } from "@/components/StarRating";
 import { useAuth } from "@/app/context/AuthContext";
 import { gameStoreApiUrl } from "@/lib/game-store-api";
 
@@ -40,18 +41,9 @@ function safeString(value: unknown) {
   return String(value).trim();
 }
 
-function starsText(value: number) {
-  const safe = Math.max(1, Math.min(5, Math.floor(Number(value) || 0)));
-  return "\u2605".repeat(safe) + "\u2606".repeat(5 - safe);
-}
-
 function extractOrdersPayload(input: unknown) {
   if (Array.isArray(input)) return input;
-  if (
-    input &&
-    typeof input === "object" &&
-    Array.isArray((input as any).orders)
-  ) {
+  if (input && typeof input === "object" && Array.isArray((input as any).orders)) {
     return (input as any).orders as unknown[];
   }
   return [];
@@ -87,13 +79,9 @@ function hasCompletedPurchase(ordersPayload: unknown, gameId: string) {
   return false;
 }
 
-export default function GameProductPage(props: {
-  params: Promise<{ id: string }>;
-}) {
+export default function GameProductPage(props: { params: Promise<{ id: string }> }) {
   const { user, token } = useAuth();
-  const [resolvedParams, setResolvedParams] = useState<{ id: string } | null>(
-    null
-  );
+  const [resolvedParams, setResolvedParams] = useState<{ id: string } | null>(null);
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,9 +91,7 @@ export default function GameProductPage(props: {
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsError, setReviewsError] = useState<string | null>(null);
-  const [reviewsSort, setReviewsSort] = useState<
-    "date_desc" | "rating_desc" | "rating_asc"
-  >("date_desc");
+  const [reviewsSort, setReviewsSort] = useState<"date_desc" | "rating_desc" | "rating_asc">("date_desc");
   const [averageRating, setAverageRating] = useState(0);
   const [totalReviews, setTotalReviews] = useState(0);
 
@@ -121,12 +107,9 @@ export default function GameProductPage(props: {
 
   const priceInfo = useMemo(() => {
     if (!game) return null;
-    const original =
-      typeof game.originalPrice === "number" ? game.originalPrice : 0;
+    const original = typeof game.originalPrice === "number" ? game.originalPrice : 0;
     const discounted =
-      typeof game.discountPrice === "number" && game.discountPrice > 0
-        ? game.discountPrice
-        : original;
+      typeof game.discountPrice === "number" && game.discountPrice > 0 ? game.discountPrice : original;
     const hasDiscount = discounted < original && discounted > 0;
     return {
       label: `$${discounted.toFixed(2)}`,
@@ -137,8 +120,7 @@ export default function GameProductPage(props: {
 
   const storeItem = useMemo(() => {
     if (!game) return null;
-    const original =
-      typeof game.originalPrice === "number" ? game.originalPrice : 0;
+    const original = typeof game.originalPrice === "number" ? game.originalPrice : 0;
     const priceLabel = priceInfo?.label ?? `$${original.toFixed(2)}`;
     return {
       slug: game.id,
@@ -150,9 +132,7 @@ export default function GameProductPage(props: {
   }, [game, priceInfo?.label, priceInfo?.originalLabel]);
 
   useEffect(() => {
-    props.params
-      .then((p) => setResolvedParams(p))
-      .catch(() => setResolvedParams(null));
+    props.params.then((p) => setResolvedParams(p)).catch(() => setResolvedParams(null));
   }, [props.params]);
 
   useEffect(() => {
@@ -162,12 +142,9 @@ export default function GameProductPage(props: {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(
-          gameStoreApiUrl(`/games/${resolvedParams.id}`),
-          {
-            cache: "no-store",
-          }
-        );
+        const res = await fetch(gameStoreApiUrl(`/games/${resolvedParams.id}`), {
+          cache: "no-store",
+        });
         const data = await res.json().catch(() => null);
         if (!res.ok || !data) {
           throw new Error(data?.message || "Game not found");
@@ -193,44 +170,25 @@ export default function GameProductPage(props: {
       setReviewsLoading(true);
       setReviewsError(null);
       try {
-        const res = await fetch(
-          gameStoreApiUrl(`/games/${game.id}/reviews?sort=${reviewsSort}`),
-          { cache: "no-store" }
-        );
+        const res = await fetch(gameStoreApiUrl(`/games/${game.id}/reviews?sort=${reviewsSort}`), { cache: "no-store" });
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.message || "Failed to load reviews");
-        const list = Array.isArray(data?.reviews)
-          ? (data.reviews as ReviewRow[])
-          : [];
+        const list = Array.isArray(data?.reviews) ? (data.reviews as ReviewRow[]) : [];
         const computedAverage =
           list.length > 0
-            ? list.reduce(
-                (sum, r) =>
-                  sum +
-                  Math.max(1, Math.min(5, Math.floor(Number(r?.rating) || 0))),
-                0
-              ) / list.length
+            ? list.reduce((sum, r) => sum + Math.max(1, Math.min(5, Math.floor(Number(r?.rating) || 0))), 0) /
+              list.length
             : 0;
         if (!active) return;
         setReviews(list);
-        setAverageRating(
-          typeof data?.averageRating === "number"
-            ? data.averageRating
-            : computedAverage
-        );
-        setTotalReviews(
-          typeof data?.totalReviews === "number"
-            ? data.totalReviews
-            : list.length
-        );
+        setAverageRating(typeof data?.averageRating === "number" ? data.averageRating : computedAverage);
+        setTotalReviews(typeof data?.totalReviews === "number" ? data.totalReviews : list.length);
       } catch (err) {
         if (!active) return;
         setReviews([]);
         setAverageRating(0);
         setTotalReviews(0);
-        setReviewsError(
-          err instanceof Error ? err.message : "Failed to load reviews"
-        );
+        setReviewsError(err instanceof Error ? err.message : "Failed to load reviews");
       } finally {
         if (active) setReviewsLoading(false);
       }
@@ -250,15 +208,10 @@ export default function GameProductPage(props: {
     let active = true;
     (async () => {
       try {
-        const res = await fetch(
-          gameStoreApiUrl(
-            `/customers/me/reviews?gameId=${encodeURIComponent(game.id)}`
-          ),
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            cache: "no-store",
-          }
-        );
+        const res = await fetch(gameStoreApiUrl(`/customers/me/reviews?gameId=${encodeURIComponent(game.id)}`), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
         const data = await res.json().catch(() => null);
         if (!res.ok) return;
         const first = Array.isArray(data) ? (data[0] as any) : null;
@@ -311,9 +264,8 @@ export default function GameProductPage(props: {
         const data = await res.json().catch(() => null);
         if (!res.ok) {
           const msg =
-            safeString(
-              (data as any)?.error?.message || (data as any)?.message
-            ) || "Failed to verify purchase.";
+            safeString((data as any)?.error?.message || (data as any)?.message) ||
+            "Failed to verify purchase.";
           throw new Error(msg);
         }
         if (!active) return;
@@ -323,9 +275,7 @@ export default function GameProductPage(props: {
         if (!active) return;
         setHasPurchased(false);
         setPurchaseChecked(true);
-        setPurchaseError(
-          err instanceof Error ? err.message : "Failed to verify purchase."
-        );
+        setPurchaseError(err instanceof Error ? err.message : "Failed to verify purchase.");
       } finally {
         if (active) setPurchaseLoading(false);
       }
@@ -336,16 +286,10 @@ export default function GameProductPage(props: {
     };
   }, [game?.id, isCustomer, token]);
 
-  const publisherId =
-    safeString(game?.publisherId) || safeString(game?.publisher?.id);
-  const isOwnGame = Boolean(
-    user?.id && publisherId && safeString(user.id) === publisherId
-  );
+  const publisherId = safeString(game?.publisherId) || safeString(game?.publisher?.id);
+  const isOwnGame = Boolean(user?.id && publisherId && safeString(user.id) === publisherId);
   const canWriteReview = Boolean(
-    token &&
-      isCustomer &&
-      !isOwnGame &&
-      (myReview?.id || (purchaseChecked && hasPurchased))
+    token && isCustomer && !isOwnGame && (myReview?.id || (purchaseChecked && hasPurchased))
   );
 
   const saveMyReview = async () => {
@@ -359,15 +303,10 @@ export default function GameProductPage(props: {
       return;
     }
     if (!myReview?.id && !hasPurchased) {
-      setReviewMsg(
-        "Only customers who have purchased this game can write a review."
-      );
+      setReviewMsg("Only customers who have purchased this game can write a review.");
       return;
     }
-    const rating = Math.max(
-      1,
-      Math.min(5, Math.floor(Number(reviewRating) || 0))
-    );
+    const rating = Math.max(1, Math.min(5, Math.floor(Number(reviewRating) || 0)));
     const text = reviewText.trim();
     if (!text) {
       setReviewMsg("Review text is required.");
@@ -389,22 +328,14 @@ export default function GameProductPage(props: {
 
       const res = await fetch(url, {
         method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ rating, reviewText: text }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         if (res.status === 403) {
-          const msg = safeString(
-            (data as any)?.error?.message || (data as any)?.message
-          );
-          throw new Error(
-            msg ||
-              "Only customers who have purchased this game can write a review."
-          );
+          const msg = safeString((data as any)?.error?.message || (data as any)?.message);
+          throw new Error(msg || "Only customers who have purchased this game can write a review.");
         }
         throw new Error(data?.message || "Failed to save review");
       }
@@ -421,40 +352,25 @@ export default function GameProductPage(props: {
       setMyReview(next.id ? next : null);
       setReviewMsg("Saved.");
       // refresh public list
-      const refresh = await fetch(
-        gameStoreApiUrl(`/games/${game.id}/reviews?sort=${reviewsSort}`),
-        { cache: "no-store" }
-      );
+      const refresh = await fetch(gameStoreApiUrl(`/games/${game.id}/reviews?sort=${reviewsSort}`), { cache: "no-store" });
       const refreshed = await refresh.json().catch(() => null);
       if (refresh.ok) {
-        const list: ReviewRow[] = Array.isArray(refreshed?.reviews)
-          ? (refreshed.reviews as ReviewRow[])
-          : [];
+        const list: ReviewRow[] = Array.isArray(refreshed?.reviews) ? (refreshed.reviews as ReviewRow[]) : [];
         const computedAverage =
           list.length > 0
             ? list.reduce(
                 (sum: number, r: ReviewRow) =>
-                  sum +
-                  Math.max(1, Math.min(5, Math.floor(Number(r?.rating) || 0))),
+                  sum + Math.max(1, Math.min(5, Math.floor(Number(r?.rating) || 0))),
                 0
-              ) / list.length
+              ) /
+              list.length
             : 0;
         setReviews(list);
-        setAverageRating(
-          typeof refreshed?.averageRating === "number"
-            ? refreshed.averageRating
-            : computedAverage
-        );
-        setTotalReviews(
-          typeof refreshed?.totalReviews === "number"
-            ? refreshed.totalReviews
-            : list.length
-        );
+        setAverageRating(typeof refreshed?.averageRating === "number" ? refreshed.averageRating : computedAverage);
+        setTotalReviews(typeof refreshed?.totalReviews === "number" ? refreshed.totalReviews : list.length);
       }
     } catch (err) {
-      setReviewMsg(
-        err instanceof Error ? err.message : "Failed to save review"
-      );
+      setReviewMsg(err instanceof Error ? err.message : "Failed to save review");
     } finally {
       setReviewSaving(false);
     }
@@ -467,13 +383,10 @@ export default function GameProductPage(props: {
     setReviewSaving(true);
     setReviewMsg(null);
     try {
-      const res = await fetch(
-        gameStoreApiUrl(`/customers/me/reviews/${myReview.id}`),
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const res = await fetch(gameStoreApiUrl(`/customers/me/reviews/${myReview.id}`), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || "Failed to delete review");
@@ -483,44 +396,26 @@ export default function GameProductPage(props: {
       setReviewText("");
       // refresh public list
       if (game?.id) {
-        const refresh = await fetch(
-          gameStoreApiUrl(`/games/${game.id}/reviews?sort=${reviewsSort}`),
-          { cache: "no-store" }
-        );
+        const refresh = await fetch(gameStoreApiUrl(`/games/${game.id}/reviews?sort=${reviewsSort}`), { cache: "no-store" });
         const refreshed = await refresh.json().catch(() => null);
         if (refresh.ok) {
-          const list: ReviewRow[] = Array.isArray(refreshed?.reviews)
-            ? (refreshed.reviews as ReviewRow[])
-            : [];
+          const list: ReviewRow[] = Array.isArray(refreshed?.reviews) ? (refreshed.reviews as ReviewRow[]) : [];
           const computedAverage =
             list.length > 0
               ? list.reduce(
                   (sum: number, r: ReviewRow) =>
-                    sum +
-                    Math.max(
-                      1,
-                      Math.min(5, Math.floor(Number(r?.rating) || 0))
-                    ),
+                    sum + Math.max(1, Math.min(5, Math.floor(Number(r?.rating) || 0))),
                   0
-                ) / list.length
+                ) /
+                list.length
               : 0;
           setReviews(list);
-          setAverageRating(
-            typeof refreshed?.averageRating === "number"
-              ? refreshed.averageRating
-              : computedAverage
-          );
-          setTotalReviews(
-            typeof refreshed?.totalReviews === "number"
-              ? refreshed.totalReviews
-              : list.length
-          );
+          setAverageRating(typeof refreshed?.averageRating === "number" ? refreshed.averageRating : computedAverage);
+          setTotalReviews(typeof refreshed?.totalReviews === "number" ? refreshed.totalReviews : list.length);
         }
       }
     } catch (err) {
-      setReviewMsg(
-        err instanceof Error ? err.message : "Failed to delete review"
-      );
+      setReviewMsg(err instanceof Error ? err.message : "Failed to delete review");
     } finally {
       setReviewSaving(false);
     }
@@ -569,35 +464,24 @@ export default function GameProductPage(props: {
                   className="h-[400px] w-full object-cover"
                 />
               ) : (
-                <div className="flex h-[400px] items-center justify-center text-white/60">
-                  No image
-                </div>
+                <div className="flex h-[400px] items-center justify-center text-white/60">No image</div>
               )}
             </div>
 
             <div className="flex flex-col gap-4">
               <div className="space-y-2">
-                <h1 className="text-4xl font-semibold leading-tight">
-                  {game.name}
-                </h1>
+                <h1 className="text-4xl font-semibold leading-tight">{game.name}</h1>
                 <p className="text-sm text-white/70">
-                  {totalReviews > 0
-                    ? `${averageRating.toFixed(
-                        1
-                      )} / 5 (${totalReviews} reviews)`
-                    : "No ratings yet."}
+                  {totalReviews > 0 ? `${averageRating.toFixed(1)} / 5 (${totalReviews} reviews)` : "No ratings yet."}
                 </p>
                 <p className="text-2xl font-semibold">
                   {priceInfo?.label}
                   {priceInfo?.originalLabel ? (
-                    <span className="ml-2 align-middle text-base text-white/60 line-through">
-                      {priceInfo.originalLabel}
-                    </span>
+                    <span className="ml-2 align-middle text-base text-white/60 line-through">{priceInfo.originalLabel}</span>
                   ) : null}
                 </p>
                 <p className="text-white/75">
-                  {game.description ||
-                    "No description available for this title yet."}
+                  {game.description || "No description available for this title yet."}
                 </p>
               </div>
 
@@ -629,12 +513,7 @@ export default function GameProductPage(props: {
                   <div className="space-y-3">
                     <ProductActions item={storeItem} />
                     <div className="flex flex-wrap gap-3">
-                      <ReportButton
-                        targetType="game"
-                        targetId={game.id}
-                        targetGameType="custom"
-                        label="Report game"
-                      />
+                      <ReportButton targetType="game" targetId={game.id} targetGameType="custom" label="Report game" />
                     </div>
                   </div>
                 ) : null}
@@ -680,10 +559,8 @@ export default function GameProductPage(props: {
                 <p className="mt-1 text-sm text-white/70">
                   {totalReviews > 0 ? (
                     <>
-                      <span className="font-semibold text-white">
-                        {averageRating.toFixed(1)}
-                      </span>{" "}
-                      / 5 ({totalReviews} review{totalReviews === 1 ? "" : "s"})
+                      <span className="font-semibold text-white">{averageRating.toFixed(1)}</span> / 5 (
+                      {totalReviews} review{totalReviews === 1 ? "" : "s"})
                     </>
                   ) : (
                     "No reviews yet."
@@ -709,54 +586,32 @@ export default function GameProductPage(props: {
               <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
                 <h3 className="text-lg font-semibold">Write a review</h3>
                 {!token ? (
-                  <p className="mt-2 text-sm text-white/70">
-                    Log in as a customer to review purchased games.
-                  </p>
+                  <p className="mt-2 text-sm text-white/70">Log in as a customer to review purchased games.</p>
                 ) : !isCustomer ? (
-                  <p className="mt-2 text-sm text-white/70">
-                    Only customer accounts can write reviews.
-                  </p>
+                  <p className="mt-2 text-sm text-white/70">Only customer accounts can write reviews.</p>
                 ) : isOwnGame ? (
-                  <p className="mt-2 text-sm text-white/70">
-                    Publishers cannot review their own games.
-                  </p>
+                  <p className="mt-2 text-sm text-white/70">Publishers cannot review their own games.</p>
                 ) : purchaseLoading && !myReview?.id ? (
-                  <p className="mt-2 text-sm text-white/70">
-                    Checking purchase status...
-                  </p>
+                  <p className="mt-2 text-sm text-white/70">Checking purchase status...</p>
                 ) : purchaseError && !myReview?.id ? (
                   <p className="mt-2 text-sm text-white/70">{purchaseError}</p>
                 ) : purchaseChecked && !hasPurchased && !myReview?.id ? (
-                  <p className="mt-2 text-sm text-white/70">
-                    Only purchased games can be reviewed.
-                  </p>
+                  <p className="mt-2 text-sm text-white/70">Only purchased games can be reviewed.</p>
                 ) : (
                   <div className="mt-4 space-y-4">
                     <div>
-                      <label className="text-sm font-semibold text-white/80">
-                        Rating
-                      </label>
-                      <select
-                        value={reviewRating}
-                        onChange={(e) => setReviewRating(e.target.value)}
-                        className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none [color-scheme:dark]"
+                      <label className="text-sm font-semibold text-white/80">Rating</label>
+                      <StarRating
+                        value={Math.max(1, Math.min(5, Math.floor(Number(reviewRating) || 5)))}
+                        onChange={(next) => setReviewRating(String(next))}
                         disabled={reviewSaving || !canWriteReview}
-                      >
-                        <option value="5">{starsText(5)}</option>
-                        <option value="4">{starsText(4)}</option>
-                        <option value="3">{starsText(3)}</option>
-                        <option value="2">{starsText(2)}</option>
-                        <option value="1">{starsText(1)}</option>
-                      </select>
+                        className="mt-2"
+                      />
                     </div>
                     <div>
                       <div className="flex items-center justify-between">
-                        <label className="text-sm font-semibold text-white/80">
-                          Review
-                        </label>
-                        <span className="text-xs text-white/60">
-                          {reviewText.trim().length}/2000
-                        </span>
+                        <label className="text-sm font-semibold text-white/80">Review</label>
+                        <span className="text-xs text-white/60">{reviewText.trim().length}/2000</span>
                       </div>
                       <textarea
                         value={reviewText}
@@ -791,11 +646,7 @@ export default function GameProductPage(props: {
                         disabled={reviewSaving || !canWriteReview}
                         className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#1b1a55] hover:bg-white/90 disabled:opacity-60"
                       >
-                        {reviewSaving
-                          ? "Saving..."
-                          : myReview?.id
-                          ? "Update review"
-                          : "Submit review"}
+                        {reviewSaving ? "Saving..." : myReview?.id ? "Update review" : "Submit review"}
                       </button>
                     </div>
                   </div>
@@ -817,38 +668,20 @@ export default function GameProductPage(props: {
                   </div>
                 ) : (
                   reviews.map((r) => (
-                    <div
-                      key={r.id}
-                      className="rounded-3xl border border-white/10 bg-white/5 p-5"
-                    >
+                    <div key={r.id} className="rounded-3xl border border-white/10 bg-white/5 p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-white truncate">
-                            {r.customer?.username ||
-                              r.customer?.email ||
-                              "Customer"}
+                            {r.customer?.username || r.customer?.email || "Customer"}
                           </p>
                           <p className="mt-1 text-xs text-white/60">
-                            {Math.max(
-                              1,
-                              Math.min(5, Math.floor(Number(r.rating) || 0))
-                            )}{" "}
-                            / 5 -{" "}
-                            {r.updatedAt
-                              ? new Date(r.updatedAt).toLocaleDateString()
-                              : "—"}
+                            {Math.max(1, Math.min(5, Math.floor(Number(r.rating) || 0)))} / 5 -{" "}
+                            {r.updatedAt ? new Date(r.updatedAt).toLocaleDateString() : "—"}
                           </p>
                         </div>
-                        <ReportButton
-                          targetType="review"
-                          targetId={r.id}
-                          label="Report"
-                          compact
-                        />
+                        <ReportButton targetType="review" targetId={r.id} label="Report" compact />
                       </div>
-                      <p className="mt-3 whitespace-pre-line text-sm text-white/80">
-                        {r.reviewText}
-                      </p>
+                      <p className="mt-3 whitespace-pre-line text-sm text-white/80">{r.reviewText}</p>
                     </div>
                   ))
                 )}
