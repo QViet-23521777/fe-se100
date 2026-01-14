@@ -42,19 +42,22 @@ const socials = [
 export default function CheckoutPage() {
   const router = useRouter();
   const { token, user } = useAuth();
-  const { cart, subtotalCents, clearCart, promoCode, promoPreview, promoError } = useStore();
+  const { cart, subtotalCents, clearCart, promoCode, promoPreview, promoLoading, promoError, setPromoCode, previewPromo, clearPromo } = useStore();
   const subtotal = subtotalCents / 100;
   const discountCents = promoPreview?.discountCents ?? 0;
   const totalCents = promoPreview?.totalCents ?? subtotalCents;
   const total = totalCents / 100;
 
   const [mounted, setMounted] = useState(false);
-  const [method, setMethod] = useState<PaymentBrand>("visa");
+  const [method, setMethod] = useState<PaymentBrand>("wallet");
   const [card, setCard] = useState<CardInfo>(initialCard);
   const [message, setMessage] = useState<Message | null>(null);
   const [processing, setProcessing] = useState(false);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [usingSavedCard, setUsingSavedCard] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -64,8 +67,45 @@ export default function CheckoutPage() {
   }, [mounted, router, token]);
 
   const isCustomer = user?.accountType === "customer";
-  const canConfirm = cart.length > 0 && !processing && isCustomer;
-  const isCard = method !== "paypal";
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!token || !isCustomer) return;
+    let active = true;
+    (async () => {
+      setWalletLoading(true);
+      setWalletError(null);
+      try {
+        const res = await fetch(gameStoreApiUrl("/customers/me"), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = (await res.json().catch(() => null)) as any;
+        if (!res.ok) throw new Error(data?.message || "Failed to load wallet balance.");
+        const balance = typeof data?.accountBalance === "number" ? data.accountBalance : 0;
+        if (!active) return;
+        setWalletBalance(balance);
+      } catch (err) {
+        if (!active) return;
+        setWalletBalance(null);
+        setWalletError(err instanceof Error ? err.message : "Failed to load wallet balance.");
+      } finally {
+        if (active) setWalletLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isCustomer, mounted, token]);
+
+  const isWallet = method === "wallet";
+  const isCard = method !== "paypal" && !isWallet;
+  const walletBalanceCents =
+    typeof walletBalance === "number" && Number.isFinite(walletBalance)
+      ? Math.max(0, Math.round(walletBalance * 100))
+      : null;
+  const hasEnoughWallet = isCustomer && walletBalanceCents !== null && walletBalanceCents >= totalCents;
+  const canConfirm = cart.length > 0 && !processing && !promoLoading && isCustomer && isWallet && hasEnoughWallet;
 
   const cardValidation = useMemo(() => {
     if (!isCard) {
@@ -119,6 +159,17 @@ export default function CheckoutPage() {
       });
       return;
     }
+    if (!isWallet) {
+      setMessage({ type: "error", text: "Payment is only supported via Wallet." });
+      return;
+    }
+    if (!hasEnoughWallet) {
+      setMessage({
+        type: "error",
+        text: "Insufficient wallet balance. Ask an admin to top up your wallet.",
+      });
+      return;
+    }
 
     if (isCard && !cardValidation.isValid) {
       const firstError =
@@ -134,8 +185,7 @@ export default function CheckoutPage() {
     setProcessing(true);
 
     try {
-      const paymentMethod =
-        method === "paypal" ? ("PayPal" as const) : ("CreditCard" as const);
+      const paymentMethod = "Wallet" as const;
 
       const items = cart.map((line) => ({
         steamAppId: typeof line.steamAppId === "number" ? line.steamAppId : undefined,
@@ -178,6 +228,24 @@ export default function CheckoutPage() {
       }
 
       clearCart();
+      setWalletBalance((prev) => {
+        if (typeof prev !== "number" || !Number.isFinite(prev)) return prev;
+        return Number(((Math.round(prev * 100) - totalCents) / 100).toFixed(2));
+      });
+      void (async () => {
+        try {
+          const res = await fetch(gameStoreApiUrl("/customers/me"), {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
+          });
+          const fresh = await res.json().catch(() => null);
+          if (!res.ok) return;
+          const balance = typeof (fresh as any)?.accountBalance === "number" ? (fresh as any).accountBalance : null;
+          if (typeof balance === "number" && Number.isFinite(balance)) setWalletBalance(balance);
+        } catch {
+          // ignore
+        }
+      })();
       setMessage({ type: "success", text: "Payment successful! Redirecting..." });
 
       const orderId = typeof data?.id === "string" ? data.id : null;
@@ -273,7 +341,14 @@ export default function CheckoutPage() {
             cart={cart}
             promoCode={promoCode}
             promoPreview={promoPreview}
+            promoLoading={promoLoading}
+            setPromoCode={setPromoCode}
+            onApplyPromo={previewPromo}
+            onClearPromo={clearPromo}
             promoError={promoError}
+            walletBalance={walletBalance}
+            walletLoading={walletLoading}
+            walletError={walletError}
             message={message}
             isCustomer={isCustomer}
           />
@@ -319,38 +394,18 @@ function PaymentSection({
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-2xl font-semibold">Payment Method</h2>
         <span className="text-sm text-white/70">
-          {method === "paypal" ? "No card required" : "Secure card payment"}
+          {method === "wallet"
+            ? "Pay with your wallet balance"
+            : method === "paypal"
+              ? "No card required"
+              : "Secure card payment"}
         </span>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <PaymentCard
-          brand="visa"
-          active={method === "visa"}
-          onSelect={(brand) => {
-            onSelectMethod(brand);
-            onUsingSavedCard(false);
-          }}
-        />
-        <PaymentCard
-          brand="mastercard"
-          active={method === "mastercard"}
-          onSelect={(brand) => {
-            onSelectMethod(brand);
-            onUsingSavedCard(false);
-          }}
-        />
-        <PaymentCard
-          brand="paypal"
-          active={method === "paypal"}
-          onSelect={(brand) => {
-            onSelectMethod(brand);
-            onUsingSavedCard(false);
-          }}
-        />
-        <PaymentCard
-          brand="payoneer"
-          active={method === "payoneer"}
+          brand="wallet"
+          active={method === "wallet"}
           onSelect={(brand) => {
             onSelectMethod(brand);
             onUsingSavedCard(false);
@@ -359,67 +414,79 @@ function PaymentSection({
       </div>
 
       <div className="space-y-4">
-        {usingSavedCard && isCard ? (
+        {method === "wallet" ? (
           <div className="rounded-[12px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
-            Using saved card <span className="font-semibold text-white">{savedVisa}</span>.{" "}
-            <button
-              type="button"
-              onClick={() => {
-                onUsingSavedCard(false);
-                onCardChange(initialCard);
-              }}
-              className="text-cyan-300 underline underline-offset-2"
-            >
-              Use a different card
-            </button>
-            .
+            Wallet payments are enabled. Your balance is shown in the Order Summary.
           </div>
         ) : null}
-        <Input
-          placeholder="Card Holder Name"
-          value={card.holder}
-          onChange={handleInput("holder")}
-          disabled={!isCard || usingSavedCard}
-          error={showErrors ? errors.holder : ""}
-        />
-        <Input
-          placeholder="Card Number"
-          value={card.number}
-          onChange={(val) => {
-            onUsingSavedCard(false);
-            handleInput("number")(formatCardNumber(val));
-          }}
-          disabled={!isCard || usingSavedCard}
-          inputMode="numeric"
-          error={showErrors ? errors.number : ""}
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            placeholder="Expiry Date (MM/YY)"
-            value={card.expiry}
-            onChange={(val) => handleInput("expiry")(formatExpiry(val))}
-            disabled={!isCard || usingSavedCard}
-            inputMode="numeric"
-            error={showErrors ? errors.expiry : ""}
-          />
-          <Input
-            placeholder="CVV"
-            value={card.cvv}
-            onChange={(val) => handleInput("cvv")(digitsOnly(val).slice(0, 4))}
-            disabled={!isCard || usingSavedCard}
-            inputMode="numeric"
-            error={showErrors ? errors.cvv : ""}
-          />
-        </div>
+
+        {method !== "wallet" ? (
+          <>
+            {usingSavedCard && isCard ? (
+              <div className="rounded-[12px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
+                Using saved card <span className="font-semibold text-white">{savedVisa}</span>.{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUsingSavedCard(false);
+                    onCardChange(initialCard);
+                  }}
+                  className="text-cyan-300 underline underline-offset-2"
+                >
+                  Use a different card
+                </button>
+                .
+              </div>
+            ) : null}
+            <Input
+              placeholder="Card Holder Name"
+              value={card.holder}
+              onChange={handleInput("holder")}
+              disabled={!isCard || usingSavedCard}
+              error={showErrors ? errors.holder : ""}
+            />
+            <Input
+              placeholder="Card Number"
+              value={card.number}
+              onChange={(val) => {
+                onUsingSavedCard(false);
+                handleInput("number")(formatCardNumber(val));
+              }}
+              disabled={!isCard || usingSavedCard}
+              inputMode="numeric"
+              error={showErrors ? errors.number : ""}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                placeholder="Expiry Date (MM/YY)"
+                value={card.expiry}
+                onChange={(val) => handleInput("expiry")(formatExpiry(val))}
+                disabled={!isCard || usingSavedCard}
+                inputMode="numeric"
+                error={showErrors ? errors.expiry : ""}
+              />
+              <Input
+                placeholder="CVV"
+                value={card.cvv}
+                onChange={(val) => handleInput("cvv")(digitsOnly(val).slice(0, 4))}
+                disabled={!isCard || usingSavedCard}
+                inputMode="numeric"
+                error={showErrors ? errors.cvv : ""}
+              />
+            </div>
+          </>
+        ) : null}
       </div>
 
-      <div className="space-y-3 rounded-[12px] border border-white/10 bg-white/5 p-4 text-sm text-white/80">
-        <p className="text-white font-semibold">Saved methods</p>
-        <div className="flex flex-wrap gap-3">
-          <SavedCard brand="visa" number={savedVisa} onUse={onUseSavedVisa} />
-          <SavedCard brand="paypal" number="PayPal" onUse={onUsePaypal} />
+      {method !== "wallet" ? (
+        <div className="space-y-3 rounded-[12px] border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+          <p className="text-white font-semibold">Saved methods</p>
+          <div className="flex flex-wrap gap-3">
+            <SavedCard brand="visa" number={savedVisa} onUse={onUseSavedVisa} />
+            <SavedCard brand="paypal" number="PayPal" onUse={onUsePaypal} />
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -519,7 +586,14 @@ function OrderSummary({
   cart,
   promoCode,
   promoPreview,
+  promoLoading,
+  setPromoCode,
+  onApplyPromo,
+  onClearPromo,
   promoError,
+  walletBalance,
+  walletLoading,
+  walletError,
   message,
   isCustomer,
 }: {
@@ -531,14 +605,36 @@ function OrderSummary({
   onConfirm: () => void;
   cart: CartLine[];
   promoCode: string;
-  promoPreview: { code?: string; discountCents: number; totalCents: number } | null;
+  promoPreview:
+    | { code?: string; eligibleSubtotalCents?: number; discountCents: number; totalCents: number }
+    | null;
+  promoLoading: boolean;
+  setPromoCode: (value: string) => void;
+  onApplyPromo: (code?: string) => void;
+  onClearPromo: () => void;
   promoError?: string | null;
+  walletBalance: number | null;
+  walletLoading: boolean;
+  walletError: string | null;
   message: Message | null;
   isCustomer: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const promoLabel = (promoPreview?.code || promoCode || "").trim();
+  const promoNotEligible =
+    Boolean(promoPreview?.code) &&
+    (promoPreview?.eligibleSubtotalCents ?? 0) === 0 &&
+    discount === 0 &&
+    subtotal > 0;
   const visibleItems = expanded ? cart : cart.slice(0, 4);
+  const walletBalanceCents =
+    typeof walletBalance === "number" && Number.isFinite(walletBalance)
+      ? Math.max(0, Math.round(walletBalance * 100))
+      : null;
+  const totalCents = Math.max(0, Math.round(total * 100));
+  const hasEnoughWallet = walletBalanceCents !== null && walletBalanceCents >= totalCents;
+  const walletBalanceLabel =
+    walletLoading ? "Loading..." : walletError ? "-" : formatCurrency((walletBalanceCents ?? 0) / 100);
 
   return (
     <aside className="space-y-4 rounded-[18px] bg-gradient-to-b from-white/10 to-black/20 p-6 shadow-2xl">
@@ -552,6 +648,68 @@ function OrderSummary({
       <div className="flex items-center justify-between text-xl font-semibold">
         <span>Total</span>
         <span>{formatCurrency(total)}</span>
+      </div>
+
+      <div className="rounded-[12px] border border-white/10 bg-white/5 p-4 text-sm text-white/85">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-white/70">Wallet balance</span>
+          <span className="font-semibold text-white">{walletBalanceLabel}</span>
+        </div>
+        {walletError ? (
+          <p className="mt-2 text-xs text-red-200">{walletError}</p>
+        ) : !walletLoading && isCustomer && !hasEnoughWallet ? (
+          <p className="mt-2 text-xs text-amber-200/90">
+            Insufficient wallet balance. Ask an admin to top up your wallet.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-white/60">Wallet payments are required to place an order.</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-sm font-semibold text-white/90">Game Sale code</p>
+        <div className="flex gap-2">
+          <input
+            className="h-[46px] w-full rounded-[10px] border border-white/20 bg-transparent px-3 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
+            placeholder="Enter code"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value)}
+            disabled={!isCustomer || processing}
+          />
+          <button
+            type="button"
+            disabled={!isCustomer || processing || promoLoading || !promoCode.trim()}
+            onClick={() => onApplyPromo()}
+            className={`h-[46px] whitespace-nowrap rounded-[10px] bg-[#1b1a55] px-4 text-sm font-semibold ${
+              !isCustomer || processing || promoLoading || !promoCode.trim()
+                ? "opacity-60"
+                : "hover:bg-[#232171]"
+            }`}
+          >
+            {promoLoading ? "Applying..." : "Apply"}
+          </button>
+          <button
+            type="button"
+            disabled={!isCustomer || processing || promoLoading || !promoCode.trim()}
+            onClick={onClearPromo}
+            className={`h-[46px] whitespace-nowrap rounded-[10px] border border-white/20 px-4 text-sm font-semibold ${
+              !isCustomer || processing || promoLoading || !promoCode.trim()
+                ? "opacity-60"
+                : "hover:bg-white/10"
+            }`}
+          >
+            Clear
+          </button>
+        </div>
+        <p className="text-xs text-white/60">Game Sale codes apply to your cart at checkout only.</p>
+        {promoPreview?.code && !promoError ? (
+          <p className="text-xs text-white/70">Applied: {promoPreview.code}</p>
+        ) : null}
+        {promoNotEligible && !promoError ? (
+          <p className="text-xs text-amber-100/80">
+            This Game Sale code doesn’t apply to the items currently in your cart.
+          </p>
+        ) : null}
       </div>
 
       <div className="rounded-[12px] border border-white/10 bg-white/5 p-4 text-sm text-white/80">
@@ -651,6 +809,7 @@ function PaymentCard({
   onSelect: (brand: PaymentBrand) => void;
 }) {
   const logos: Record<PaymentBrand, string> = {
+    wallet: "/assets/wallet.svg",
     visa: "/assets/0330a8b8c36763d74b8be98cbac253ef243e8163.png",
     mastercard: "/assets/0edf57aebdd94b78202290f6dcae0459bfe5b4b4.png",
     paypal: "/assets/49b272b182ca363870ee17abeb3516cd9b20eb52.png",

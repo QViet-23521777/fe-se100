@@ -6,6 +6,7 @@ import Link from "next/link";
 import { TopBar } from "@/components/TopBar";
 import { useAuth } from "@/app/context/AuthContext";
 import { gameStoreApiUrl } from "@/lib/game-store-api";
+import { PublisherAccountSidebar } from "@/components/PublisherAccountSidebar";
 
 type Message = { type: "error" | "success"; text: string } | null;
 
@@ -14,6 +15,7 @@ type SidebarLink = { key: string; title: string; subtitle: string; href: string 
 type Promotion = {
   id: string;
   promotionName: string;
+  code?: string;
   discountType: "Percentage" | "FixedAmount";
   applicableScope: "AllGames" | "SpecificGames" | "Category";
   applicationCondition: string;
@@ -38,6 +40,24 @@ type Game = {
   name: string;
   genre: string;
 };
+
+function randomSaleCodeChunk(length = 6) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // avoid confusing chars (I, O, 0, 1)
+  let out = "";
+  for (let i = 0; i < length; i += 1) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return out;
+}
+
+function generateGameSaleCode(promotionName: string) {
+  const clean = String(promotionName || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim();
+  const prefix = (clean.split(" ")[0] || "SALE").slice(0, 6);
+  return `${prefix}${randomSaleCodeChunk(6)}`;
+}
 
 function SidebarItem({ item, active }: { item: SidebarLink; active?: boolean }) {
   return (
@@ -75,6 +95,7 @@ export default function AdminPromotionsPage() {
 
   const [form, setForm] = useState({
     promotionName: "",
+    code: "",
     discountType: "Percentage" as Promotion["discountType"],
     applicableScope: "AllGames" as Promotion["applicableScope"],
     applicationCondition: "",
@@ -90,6 +111,7 @@ export default function AdminPromotionsPage() {
 
   const [editForm, setEditForm] = useState({
     promotionName: "",
+    code: "",
     discountType: "Percentage" as Promotion["discountType"],
     applicableScope: "AllGames" as Promotion["applicableScope"],
     applicationCondition: "",
@@ -107,6 +129,24 @@ export default function AdminPromotionsPage() {
   const isPublisher = user?.accountType === "publisher";
 
   useEffect(() => {
+    if (!isAdmin) return;
+    setForm((prev) => {
+      const untouched =
+        !prev.promotionName.trim() &&
+        !prev.code.trim() &&
+        !prev.applicationCondition.trim() &&
+        !prev.publisherId.trim() &&
+        prev.gameIds.length === 0 &&
+        !prev.startDate &&
+        !prev.expirationDate &&
+        !prev.endDate;
+      if (!untouched) return prev;
+      if (prev.scope === "Store") return prev;
+      return { ...prev, scope: "Store" };
+    });
+  }, [isAdmin]);
+
+  useEffect(() => {
     if (!token || (!isAdmin && !isPublisher)) {
       router.replace(`/user/login?next=${encodeURIComponent("/user/manage-promos")}`);
     }
@@ -116,11 +156,17 @@ export default function AdminPromotionsPage() {
     { key: "personal", title: "Personal Information", subtitle: "Modify your personal information", href: "/user/profile" },
     { key: "manage-accounts", title: "Manage Accounts", subtitle: "Create or edit admin/publisher accounts", href: "/user/manage-accounts" },
     { key: "manage-games", title: "Manage Games", subtitle: "Create or edit games", href: "/user/manage-games" },
-    { key: "manage-promos", title: "Manage Promo Codes", subtitle: "Create and manage promotions", href: "/user/manage-promos" },
+    { key: "manage-promos", title: "Game Sale", subtitle: "Create and manage promo codes", href: "/user/manage-promos" },
     { key: "manage-orders", title: "Manage Orders", subtitle: "View customer purchases", href: "/user/manage-orders" },
     { key: "manage-refunds", title: "Manage Refunds", subtitle: "Review and process refunds", href: "/user/manage-refunds" },
+    { key: "manage-reports", title: "Manage Reports", subtitle: "Review reported items", href: "/user/manage-reports" },
   ].filter((link) =>
-    isAdmin ? true : link.key !== "manage-accounts" && link.key !== "manage-orders" && link.key !== "manage-refunds"
+    isAdmin
+      ? true
+      : link.key !== "manage-accounts" &&
+        link.key !== "manage-orders" &&
+        link.key !== "manage-refunds" &&
+        link.key !== "manage-reports"
   ); // publishers don't manage accounts, refunds, or customer orders
 
   const activeKey = "manage-promos";
@@ -258,6 +304,10 @@ export default function AdminPromotionsPage() {
       setFormMsg({ type: "error", text: "Condition/Value is required." });
       return;
     }
+    if (!form.code.trim()) {
+      setFormMsg({ type: "error", text: "Game Sale code is required." });
+      return;
+    }
     if (scope !== "Store" && form.applicableScope === "SpecificGames" && form.gameIds.length === 0) {
       setFormMsg({ type: "error", text: "Select at least 1 game for a Specific Games promotion." });
       return;
@@ -268,6 +318,7 @@ export default function AdminPromotionsPage() {
       const nowIso = new Date().toISOString();
       const payload = {
         promotionName: form.promotionName,
+        code: form.code.trim(),
         discountType: form.discountType,
         applicableScope: scope === "Store" ? ("AllGames" as const) : form.applicableScope,
         applicationCondition: form.applicationCondition.trim(),
@@ -305,7 +356,7 @@ export default function AdminPromotionsPage() {
         setFormMsg({ type: "error", text: detail || "Failed to create promo." });
         return;
       }
-      setFormMsg({ type: "success", text: "Promotion created." });
+      setFormMsg({ type: "success", text: "Game Sale created." });
       await loadPromos();
     } catch {
       setFormMsg({ type: "error", text: "Server error." });
@@ -319,6 +370,7 @@ export default function AdminPromotionsPage() {
     setEditMsg(null);
     setEditForm({
       promotionName: promo.promotionName ?? "",
+      code: String(promo.code ?? promo.promotionName ?? ""),
       discountType: promo.discountType,
       applicableScope: promo.applicableScope,
       applicationCondition: promo.applicationCondition ?? "",
@@ -349,6 +401,10 @@ export default function AdminPromotionsPage() {
       setEditMsg({ type: "error", text: "Condition/Value is required." });
       return;
     }
+    if (!editForm.code.trim()) {
+      setEditMsg({ type: "error", text: "Game Sale code is required." });
+      return;
+    }
     if (editForm.scope !== "Store" && editForm.applicableScope === "SpecificGames" && editForm.gameIds.length === 0) {
       setEditMsg({ type: "error", text: "Select at least 1 game for a Specific Games promotion." });
       return;
@@ -358,14 +414,18 @@ export default function AdminPromotionsPage() {
     setEditMsg(null);
     try {
       const nowIso = new Date().toISOString();
+      const startIso = editForm.startDate ? new Date(editForm.startDate).toISOString() : nowIso;
+      const expirationIso = editForm.expirationDate ? new Date(editForm.expirationDate).toISOString() : startIso;
+      const endIso = editForm.endDate ? new Date(editForm.endDate).toISOString() : expirationIso;
       const payload: any = {
         promotionName: editForm.promotionName,
+        code: editForm.code.trim(),
         discountType: editForm.discountType,
         applicableScope: editForm.scope === "Store" ? "AllGames" : editForm.applicableScope,
         applicationCondition: editForm.applicationCondition.trim(),
-        startDate: editForm.startDate ? new Date(editForm.startDate).toISOString() : nowIso,
-        expirationDate: editForm.expirationDate ? new Date(editForm.expirationDate).toISOString() : nowIso,
-        endDate: editForm.endDate ? new Date(editForm.endDate).toISOString() : nowIso,
+        startDate: startIso,
+        expirationDate: expirationIso,
+        endDate: endIso,
         quantityIssued: Number.isFinite(editForm.quantityIssued) ? Math.max(0, editForm.quantityIssued) : 0,
         status: editForm.status,
       };
@@ -391,7 +451,7 @@ export default function AdminPromotionsPage() {
         return;
       }
 
-      setEditMsg({ type: "success", text: "Promotion updated." });
+      setEditMsg({ type: "success", text: "Game Sale updated." });
       await loadPromos();
       setEditingId(null);
     } catch {
@@ -403,7 +463,7 @@ export default function AdminPromotionsPage() {
 
   const deletePromo = async (id: string) => {
     if (!token) return;
-    const ok = confirm("Delete this promotion?");
+    const ok = confirm("Delete this Game Sale code?");
     if (!ok) return;
     setListMsg(null);
     try {
@@ -447,32 +507,36 @@ export default function AdminPromotionsPage() {
         <TopBar />
 
         <div className="grid gap-10 lg:grid-cols-[360px_1fr]">
-          <aside className="overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-black/20 shadow-2xl backdrop-blur">
-            <div className="bg-white/10 px-6 py-6">
-              <p className="text-2xl font-semibold">My Account</p>
-              <p className="mt-1 text-sm text-white/60">Account Management</p>
-            </div>
-            <div className="divide-y divide-white/10">
-              {sidebarLinks.map((item) => (
-                <SidebarItem key={item.key} item={item} active={item.key === activeKey} />
-              ))}
-            </div>
-            <div className="px-6 py-6">
-              <Link
-                href="/user/logout"
-                className="block w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Log out
-              </Link>
-            </div>
-          </aside>
+          {isPublisher ? (
+            <PublisherAccountSidebar />
+          ) : (
+            <aside className="overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-black/20 shadow-2xl backdrop-blur">
+              <div className="bg-white/10 px-6 py-6">
+                <p className="text-2xl font-semibold">My Account</p>
+                <p className="mt-1 text-sm text-white/60">Account Management</p>
+              </div>
+              <div className="divide-y divide-white/10">
+                {sidebarLinks.map((item) => (
+                  <SidebarItem key={item.key} item={item} active={item.key === activeKey} />
+                ))}
+              </div>
+              <div className="px-6 py-6">
+                <Link
+                  href="/user/logout"
+                  className="block w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-white/10"
+                >
+                  Log out
+                </Link>
+              </div>
+            </aside>
+          )}
 
           <main className="rounded-3xl border border-white/10 bg-[#0c143d]/70 p-6 shadow-xl">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h1 className="text-3xl font-semibold">Promo Codes</h1>
+                <h1 className="text-3xl font-semibold">Game Sale</h1>
                 <p className="text-white/70">
-                  Create and manage promotions ({isAdmin ? "Admin" : "Publisher"}).
+                  Create and manage promo codes ({isAdmin ? "Admin" : "Publisher"}).
                 </p>
               </div>
               <Link
@@ -499,6 +563,46 @@ export default function AdminPromotionsPage() {
                       className="input"
                       placeholder="Summer Sale 20%"
                     />
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="text-sm text-white/70">Game Sale Code</label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm((prev) => ({
+                              ...prev,
+                              code: generateGameSaleCode(prev.promotionName),
+                            }))
+                          }
+                          className="rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white hover:bg-white/10"
+                        >
+                          Generate
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!form.code.trim()}
+                          onClick={() => void navigator.clipboard?.writeText(form.code.trim())}
+                          className={`rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white ${
+                            form.code.trim() ? "hover:bg-white/10" : "opacity-60"
+                          }`}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        name="code"
+                        value={form.code}
+                        onChange={handleChange}
+                        required
+                        className="input flex-1"
+                        placeholder="SUMMER20"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-white/60">Customers apply this code at checkout.</p>
                   </div>
                   <div>
                     <label className="text-sm text-white/70">Discount Type</label>
@@ -527,7 +631,7 @@ export default function AdminPromotionsPage() {
                         <option value="Store">Store-wide (all games)</option>
                       </select>
                       <p className="mt-1 text-xs text-white/60">
-                        Store-wide promos apply automatically to Steam pricing and promo-code checkout.
+                        Game Sale codes are applied at checkout only.
                       </p>
                     </div>
                   ) : null}
@@ -732,13 +836,14 @@ export default function AdminPromotionsPage() {
                     disabled={saving}
                     className="rounded-xl bg-[#1b1a55] px-5 py-3 text-sm font-semibold text-white hover:bg-[#23225e] transition disabled:opacity-60"
                   >
-                    {saving ? "Saving…" : "Create Promotion"}
+                    {saving ? "Saving…" : "Create Game Sale"}
                   </button>
                   <button
                     type="button"
                     onClick={() =>
                       setForm({
                         promotionName: "",
+                        code: "",
                         discountType: "Percentage",
                         applicableScope: "AllGames",
                         applicationCondition: "",
@@ -761,7 +866,7 @@ export default function AdminPromotionsPage() {
 
               <div className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-6 shadow-xl">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Existing Promotions</h2>
+                  <h2 className="text-xl font-semibold">Existing Game Sale Codes</h2>
                   <button
                     type="button"
                     onClick={loadPromos}
@@ -784,9 +889,9 @@ export default function AdminPromotionsPage() {
                 ) : null}
 
                 {loading ? (
-                  <p className="text-white/70">Loading promotions…</p>
+                  <p className="text-white/70">Loading game sales…</p>
                 ) : promos.length === 0 ? (
-                  <p className="text-white/70">No promotions yet.</p>
+                  <p className="text-white/70">No game sales yet.</p>
                 ) : (
                   <div className="space-y-3">
                     {promos.map((promo) => (
@@ -797,6 +902,18 @@ export default function AdminPromotionsPage() {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
                             <p className="text-lg font-semibold">{promo.promotionName}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60">
+                              <span>Code: {promo.code ?? promo.promotionName}</span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void navigator.clipboard?.writeText(String(promo.code ?? promo.promotionName))
+                                }
+                                className="rounded-full border border-white/20 px-2 py-0.5 text-[11px] font-semibold text-white/90 hover:bg-white/10"
+                              >
+                                Copy
+                              </button>
+                            </div>
                             <p className="text-sm text-white/70">
                               {promo.discountType} · {scopeLabel(promo.applicableScope)} ·{" "}
                               {discountLabel(promo)}
@@ -860,6 +977,42 @@ export default function AdminPromotionsPage() {
                                   }
                                   className="input"
                                 />
+                              </div>
+                              <div className="md:col-span-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <label className="text-sm text-white/70">Game Sale Code</label>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setEditForm((prev) => ({
+                                          ...prev,
+                                          code: generateGameSaleCode(prev.promotionName),
+                                        }))
+                                      }
+                                      className="rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white hover:bg-white/10"
+                                    >
+                                      Generate
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={!editForm.code.trim()}
+                                      onClick={() => void navigator.clipboard?.writeText(editForm.code.trim())}
+                                      className={`rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white ${
+                                        editForm.code.trim() ? "hover:bg-white/10" : "opacity-60"
+                                      }`}
+                                    >
+                                      Copy
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex gap-2">
+                                  <input
+                                    value={editForm.code}
+                                    onChange={(e) => setEditForm((prev) => ({ ...prev, code: e.target.value }))}
+                                    className="input flex-1"
+                                  />
+                                </div>
                               </div>
                               <div>
                                 <label className="text-sm text-white/70">Discount Type</label>

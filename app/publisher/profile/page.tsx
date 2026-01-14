@@ -1,10 +1,13 @@
 "use client";
 
-import { useAuth } from "@/app/context/AuthContext";
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { TopBar } from "@/components/TopBar";
+import { useAuth } from "@/app/context/AuthContext";
+import { gameStoreApiUrl } from "@/lib/game-store-api";
+import { PublisherAccountSidebar } from "@/components/PublisherAccountSidebar";
 
-interface PublisherProfile {
+type PublisherProfile = {
   id: string;
   publisherName: string;
   email: string;
@@ -12,14 +15,12 @@ interface PublisherProfile {
   socialMedia?: string;
   bankType?: string;
   bankName?: string;
-  contractDate: string;
-  contractDuration: number;
-  activityStatus: string;
-  createdAt: string;
-  updatedAt: string;
-}
+  contractDate?: string;
+  contractDuration?: number;
+  activityStatus?: string;
+};
 
-interface ContractInfo {
+type ContractInfo = {
   contractDate: string;
   contractDuration: number;
   expiryDate: string;
@@ -27,29 +28,29 @@ interface ContractInfo {
   isActive: boolean;
   daysRemaining: number;
   isExpiringSoon: boolean;
-}
+};
 
-interface Statistics {
+type GameCounts = {
   totalGames: number;
   releasedGames: number;
   upcomingGames: number;
-  totalRevenue: number;
-  activeContract: boolean;
-  contractExpiryDate: string;
-  daysUntilExpiry: number;
-}
+  delistedGames: number;
+};
+
+type Message = { type: "success" | "error"; text: string } | null;
 
 export default function PublisherProfilePage() {
   const { user, token } = useAuth();
   const router = useRouter();
+
   const [profile, setProfile] = useState<PublisherProfile | null>(null);
   const [contract, setContract] = useState<ContractInfo | null>(null);
-  const [statistics, setStatistics] = useState<Statistics | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [counts, setCounts] = useState<GameCounts | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<Message>(null);
 
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     publisherName: "",
     phoneNumber: "",
     socialMedia: "",
@@ -57,464 +58,225 @@ export default function PublisherProfilePage() {
     bankName: "",
   });
 
-  const fetchProfile = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const storedToken = localStorage.getItem("token");
-
-      if (!storedToken) {
-        throw new Error("No token found");
-      }
-
-      console.log("📡 Fetching publisher profile...");
-
-      const response = await fetch("http://localhost:3000/publishers/me", {
-        headers: {
-          Authorization: `Bearer ${storedToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch profile: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log("✅ Publisher profile received:", data);
-
-      setProfile(data);
-      setFormData({
-        publisherName: data.publisherName || "",
-        phoneNumber: data.phoneNumber || "",
-        socialMedia: data.socialMedia || "",
-        bankType: data.bankType || "",
-        bankName: data.bankName || "",
-      });
-
-      // Fetch contract info
-      fetchContract(storedToken);
-      // Fetch statistics
-      fetchStatistics(storedToken);
-    } catch (error) {
-      console.error("💥 Error fetching profile:", error);
-      setError(error instanceof Error ? error.message : "Có lỗi xảy ra");
-
-      if (error instanceof Error && error.message.includes("401")) {
-        localStorage.clear();
-        router.push("/publisher/login");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
-
-  const fetchContract = async (storedToken: string) => {
-    try {
-      const response = await fetch(
-        "http://localhost:3000/publishers/me/contract",
-        {
-          headers: {
-            Authorization: `Bearer ${storedToken}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setContract(data);
-      }
-    } catch (error) {
-      console.error("Error fetching contract:", error);
-    }
-  };
-
-  const fetchStatistics = async (storedToken: string) => {
-    try {
-      const response = await fetch(
-        "http://localhost:3000/publishers/me/statistics",
-        {
-          headers: {
-            Authorization: `Bearer ${storedToken}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setStatistics(data);
-      }
-    } catch (error) {
-      console.error("Error fetching statistics:", error);
-    }
-  };
+  const isPublisher = user?.accountType === "publisher";
 
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-
-    if (!storedToken || user?.accountType !== "publisher") {
-      console.error("❌ Not a publisher or no token - redirecting");
-      router.push("/publisher/login");
+    if (!token || !isPublisher) {
+      router.replace("/publisher/login");
       return;
     }
 
-    fetchProfile();
-  }, [fetchProfile, router, user]);
+    let active = true;
+    (async () => {
+      setLoading(true);
+      setMessage(null);
+      try {
+        const [pRes, cRes, gRes] = await Promise.all([
+          fetch(gameStoreApiUrl("/publisher/me"), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+          fetch(gameStoreApiUrl("/publisher/me/contract"), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+          fetch(gameStoreApiUrl("/publisher/me/games/counts"), { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+        ]);
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const storedToken = localStorage.getItem("token");
+        const pData = await pRes.json().catch(() => null);
+        const cData = await cRes.json().catch(() => null);
+        const gData = await gRes.json().catch(() => null);
 
-      const response = await fetch("http://localhost:3000/publishers/me", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${storedToken}`,
-        },
-        body: JSON.stringify(formData),
-      });
+        if (!pRes.ok) throw new Error(pData?.message || "Failed to load profile");
+        if (cRes.ok) setContract(cData);
+        if (gRes.ok) setCounts(gData);
 
-      if (response.ok) {
-        const updated = await response.json();
-        setProfile(updated);
-        setIsEditing(false);
-        alert("✅ Cập nhật thông tin thành công!");
-      } else {
-        const errorText = await response.text();
-        console.error("Update error:", errorText);
-        alert("❌ Cập nhật thất bại!");
+        if (!active) return;
+        setProfile(pData);
+        setForm({
+          publisherName: pData?.publisherName ?? "",
+          phoneNumber: pData?.phoneNumber ?? "",
+          socialMedia: pData?.socialMedia ?? "",
+          bankType: pData?.bankType ?? "",
+          bankName: pData?.bankName ?? "",
+        });
+      } catch (err) {
+        if (!active) return;
+        setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to load profile" });
+      } finally {
+        if (active) setLoading(false);
       }
-    } catch (error) {
-      console.error("Error updating profile:", error);
-      alert("❌ Có lỗi xảy ra!");
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [isPublisher, router, token]);
+
+  const contractLabel = useMemo(() => {
+    if (!contract) return "";
+    const expiry = new Date(contract.expiryDate);
+    if (Number.isNaN(expiry.getTime())) return "";
+    const suffix = contract.isExpiringSoon ? " (expiring soon)" : "";
+    return `${expiry.toLocaleDateString()}${suffix}`;
+  }, [contract]);
+
+  async function onSave() {
+    if (!token) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch(gameStoreApiUrl("/publisher/me"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          publisherName: form.publisherName.trim(),
+          phoneNumber: form.phoneNumber.trim(),
+          socialMedia: form.socialMedia.trim() || undefined,
+          bankType: form.bankType.trim() || undefined,
+          bankName: form.bankName.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || "Failed to save profile");
+      setProfile(data);
+      setMessage({ type: "success", text: "Saved successfully." });
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to save profile" });
+    } finally {
+      setSaving(false);
     }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl animate-pulse">Đang tải thông tin...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="text-xl text-red-400 mb-4">❌ {error}</div>
-          <button
-            onClick={fetchProfile}
-            className="bg-primary hover:bg-primary/90 text-black px-6 py-2 rounded-lg"
-          >
-            Thử lại
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl">Không tìm thấy thông tin publisher</div>
-      </div>
-    );
   }
 
   return (
-    <main className="min-h-screen py-10">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Thông tin Publisher</h1>
-          <p className="text-light-200">
-            Quản lý thông tin nhà phát hành của bạn
-          </p>
-        </div>
+    <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
+      <div className="flex w-full flex-col gap-12 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
+        <TopBar />
 
-        {/* Main Profile Card */}
-        <div className="bg-dark-100 border-dark-200 border rounded-lg p-6 mb-6">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h2 className="text-2xl font-bold mb-1">
-                {profile.publisherName}
-              </h2>
-              <p className="text-light-200">{profile.email}</p>
-              <span className="inline-block mt-2 text-xs bg-yellow-500/20 text-yellow-300 px-3 py-1 rounded">
-                Publisher Account
-              </span>
-            </div>
-            <span
-              className={`pill ${
-                profile.activityStatus === "Active"
-                  ? "bg-green-500/20 text-green-400"
-                  : "bg-red-500/20 text-red-400"
-              }`}
-            >
-              {profile.activityStatus}
-            </span>
-          </div>
+        <div className="grid gap-10 lg:grid-cols-[360px_1fr]">
+          <PublisherAccountSidebar />
 
-          {!isEditing ? (
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <InfoItem label="Tên Publisher" value={profile.publisherName} />
-                <InfoItem label="Email" value={profile.email} />
-                <InfoItem label="Số điện thoại" value={profile.phoneNumber} />
-                <InfoItem
-                  label="Social Media"
-                  value={profile.socialMedia || "Chưa có"}
-                />
+          <main className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-black/20 p-8 shadow-2xl backdrop-blur">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Personal Information</p>
+            <h1 className="mt-2 text-3xl font-semibold">Publisher profile</h1>
+            <p className="mt-2 text-sm text-white/60">Update contact and payout details for your publisher account.</p>
+
+            {loading ? (
+              <div className="mt-8 text-white/70">Loading...</div>
+            ) : !profile ? (
+              <div className="mt-8 rounded-2xl border border-red-500/40 bg-red-500/10 px-5 py-4 text-sm text-red-100">
+                {message?.text || "Profile not found."}
               </div>
+            ) : (
+              <>
+                <section className="mt-8 rounded-2xl border border-white/10 bg-[#0c143d]/60 p-6">
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="text-sm text-white/70">Publisher name</label>
+                      <input
+                        value={form.publisherName}
+                        onChange={(e) => setForm((p) => ({ ...p, publisherName: e.target.value }))}
+                        className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-white/70">Email</label>
+                      <input
+                        value={profile.email}
+                        disabled
+                        className="mt-1 w-full rounded-xl bg-white/5 px-3 py-2 text-sm text-white/70 outline-none ring-1 ring-white/10"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-white/70">Phone number</label>
+                      <input
+                        value={form.phoneNumber}
+                        onChange={(e) => setForm((p) => ({ ...p, phoneNumber: e.target.value }))}
+                        className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-sm text-white/70">Social media (optional)</label>
+                      <input
+                        value={form.socialMedia}
+                        onChange={(e) => setForm((p) => ({ ...p, socialMedia: e.target.value }))}
+                        placeholder="https://..."
+                        className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-white/70">Bank type (optional)</label>
+                      <input
+                        value={form.bankType}
+                        onChange={(e) => setForm((p) => ({ ...p, bankType: e.target.value }))}
+                        className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-white/70">Bank name (optional)</label>
+                      <input
+                        value={form.bankName}
+                        onChange={(e) => setForm((p) => ({ ...p, bankName: e.target.value }))}
+                        className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-white/30"
+                      />
+                    </div>
+                  </div>
 
-              <div className="space-y-4">
-                <InfoItem
-                  label="Loại ngân hàng"
-                  value={profile.bankType || "Chưa có"}
-                />
-                <InfoItem
-                  label="Tên ngân hàng"
-                  value={profile.bankName || "Chưa có"}
-                />
-                <InfoItem
-                  label="Ngày ký hợp đồng"
-                  value={new Date(profile.contractDate).toLocaleDateString(
-                    "vi-VN"
-                  )}
-                />
-                <InfoItem
-                  label="Thời hạn hợp đồng"
-                  value={`${profile.contractDuration} tháng`}
-                />
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleUpdate} className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <FormInput
-                  label="Tên Publisher"
-                  value={formData.publisherName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, publisherName: e.target.value })
-                  }
-                />
-                <FormInput
-                  label="Số điện thoại"
-                  value={formData.phoneNumber}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phoneNumber: e.target.value })
-                  }
-                />
-                <FormInput
-                  label="Social Media"
-                  value={formData.socialMedia}
-                  onChange={(e) =>
-                    setFormData({ ...formData, socialMedia: e.target.value })
-                  }
-                />
-                <FormInput
-                  label="Loại ngân hàng"
-                  value={formData.bankType}
-                  onChange={(e) =>
-                    setFormData({ ...formData, bankType: e.target.value })
-                  }
-                />
-                <FormInput
-                  label="Tên ngân hàng"
-                  value={formData.bankName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, bankName: e.target.value })
-                  }
-                />
-              </div>
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-sm text-white/70">
+                      Status: <span className="font-semibold text-white">{profile.activityStatus || "Active"}</span>
+                    </div>
+                    <button
+                      onClick={onSave}
+                      disabled={saving}
+                      className="rounded-full bg-white px-6 py-2 text-sm font-semibold text-[#1b1a55] disabled:opacity-60"
+                    >
+                      {saving ? "Saving..." : "Save"}
+                    </button>
+                  </div>
+                </section>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="submit"
-                  className="bg-primary hover:bg-primary/90 text-black px-6 py-2.5 rounded-lg font-semibold transition"
-                >
-                  Lưu thay đổi
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(false)}
-                  className="bg-dark-200 hover:bg-dark-200/80 px-6 py-2.5 rounded-lg transition"
-                >
-                  Hủy
-                </button>
-              </div>
-            </form>
-          )}
-
-          {!isEditing && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="bg-primary hover:bg-primary/90 text-black px-6 py-2.5 rounded-lg font-semibold transition mt-6"
-            >
-              Chỉnh sửa thông tin
-            </button>
-          )}
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6 mb-6">
-          {/* Statistics Card */}
-          {statistics && (
-            <div className="bg-dark-100 border-dark-200 border rounded-lg p-6">
-              <h3 className="text-xl font-bold mb-4">📊 Thống kê</h3>
-              <div className="space-y-3">
-                <StatItem
-                  label="Tổng số game"
-                  value={statistics.totalGames.toString()}
-                  icon="🎮"
-                />
-                <StatItem
-                  label="Đã phát hành"
-                  value={statistics.releasedGames.toString()}
-                  icon="✅"
-                />
-                <StatItem
-                  label="Sắp ra mắt"
-                  value={statistics.upcomingGames.toString()}
-                  icon="⏳"
-                />
-                <StatItem
-                  label="Tổng doanh thu"
-                  value={`${statistics.totalRevenue.toLocaleString()} VNĐ`}
-                  icon="💰"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Contract Card */}
-          {contract && (
-            <div className="bg-dark-100 border-dark-200 border rounded-lg p-6">
-              <h3 className="text-xl font-bold mb-4">📄 Hợp đồng</h3>
-              <div className="space-y-3">
-                <StatItem
-                  label="Trạng thái"
-                  value={contract.isActive ? "Còn hiệu lực" : "Hết hạn"}
-                  icon={contract.isActive ? "✅" : "❌"}
-                />
-                <StatItem
-                  label="Ngày hết hạn"
-                  value={new Date(contract.expiryDate).toLocaleDateString(
-                    "vi-VN"
-                  )}
-                  icon="📅"
-                />
-                <StatItem
-                  label="Số ngày còn lại"
-                  value={`${contract.daysRemaining} ngày`}
-                  icon="⏰"
-                />
-                {contract.isExpiringSoon && (
-                  <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                    <p className="text-yellow-400 text-sm">
-                      ⚠️ Hợp đồng sắp hết hạn! Vui lòng liên hệ để gia hạn.
+                <section className="mt-6 grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-white/10 bg-[#0c143d]/60 p-5">
+                    <p className="text-sm text-white/60">Contract expiry</p>
+                    <p className="mt-1 text-lg font-semibold">{contractLabel || "—"}</p>
+                    {contract ? <p className="mt-1 text-xs text-white/50">Days remaining: {contract.daysRemaining}</p> : null}
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0c143d]/60 p-5">
+                    <p className="text-sm text-white/60">Games</p>
+                    <p className="mt-1 text-lg font-semibold">{counts?.totalGames ?? 0}</p>
+                    <p className="mt-1 text-xs text-white/50">
+                      Released: {counts?.releasedGames ?? 0} · Upcoming: {counts?.upcomingGames ?? 0}
                     </p>
                   </div>
-                )}
+                  <div className="rounded-2xl border border-white/10 bg-[#0c143d]/60 p-5">
+                    <p className="text-sm text-white/60">Quick actions</p>
+                    <button
+                      onClick={() => router.push("/publisher/statistics")}
+                      className="mt-2 w-full rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/15"
+                    >
+                      View statistics
+                    </button>
+                    <button
+                      onClick={() => router.push("/user/manage-games")}
+                      className="mt-2 w-full rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/15"
+                    >
+                      Manage games
+                    </button>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {message ? (
+              <div
+                className={`mt-6 rounded-2xl border px-5 py-4 text-sm ${
+                  message.type === "success"
+                    ? "border-green-500/40 bg-green-500/10 text-green-100"
+                    : "border-red-500/40 bg-red-500/10 text-red-100"
+                }`}
+              >
+                {message.text}
               </div>
-            </div>
-          )}
-
-          {/* Bank Info Card */}
-          <div className="bg-dark-100 border-dark-200 border rounded-lg p-6">
-            <h3 className="text-xl font-bold mb-4">🏦 Ngân hàng</h3>
-            <div className="space-y-3">
-              <StatItem
-                label="Loại"
-                value={profile.bankType || "Chưa cập nhật"}
-                icon="🏦"
-              />
-              <StatItem
-                label="Ngân hàng"
-                value={profile.bankName || "Chưa cập nhật"}
-                icon="💳"
-              />
-              <StatItem
-                label="Số điện thoại"
-                value={profile.phoneNumber}
-                icon="📱"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 gap-4">
-          <button
-            onClick={() => router.push(`/publisher/game/${user?.id}`)}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-3"
-          >
-            <span className="text-2xl">🎮</span>
-            <span>Quản lý Game của tôi</span>
-          </button>
-          <button
-            onClick={() => router.push("/publisher/change-password")}
-            className="bg-dark-200 hover:bg-dark-300 px-6 py-4 rounded-lg font-semibold transition flex items-center justify-center gap-3"
-          >
-            <span className="text-2xl">🔒</span>
-            <span>Đổi mật khẩu</span>
-          </button>
+            ) : null}
+          </main>
         </div>
       </div>
-    </main>
-  );
-}
-
-function InfoItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-light-200 text-sm mb-1">{label}</p>
-      <p className="text-white font-medium">{value}</p>
     </div>
   );
 }
 
-function FormInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-}) {
-  return (
-    <div>
-      <label className="text-light-200 text-sm mb-2 block">{label}</label>
-      <input
-        type="text"
-        value={value}
-        onChange={onChange}
-        className="w-full bg-dark-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary"
-      />
-    </div>
-  );
-}
-
-function StatItem({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon: string;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-2xl">{icon}</span>
-      <div>
-        <p className="text-light-200 text-sm">{label}</p>
-        <p className="text-white font-medium">{value}</p>
-      </div>
-    </div>
-  );
-}

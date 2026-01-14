@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { fetchSteamAppById, fetchSteamApps } from "@/lib/steam-apps";
 import { ProductActions } from "@/components/StoreActions";
+import { ReportButton } from "@/components/ReportButton";
 import { ScreenshotGallery } from "@/components/ScreenshotGallery";
 import { applyStorePromotionsToUsd, fetchActiveStorePromotions } from "@/lib/store-promotions";
 
@@ -445,6 +446,14 @@ export default async function ProductPage({
                   originalPriceLabel: finalOriginalText ?? null,
                 }}
               />
+              <div className="flex flex-wrap gap-3">
+                <ReportButton
+                  targetType="game"
+                  targetId={String(steamAppId)}
+                  targetGameType="steam"
+                  label="Report game"
+                />
+              </div>
 
               <div className="grid gap-3 text-sm text-white/85">
                 <InfoRow label="Genres" value={genreText} />

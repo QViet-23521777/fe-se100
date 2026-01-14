@@ -51,6 +51,11 @@ export default function CartPage() {
   const discountCents = promoPreview?.discountCents ?? 0;
   const totalCents =
     promoPreview && promoPreview.totalCents >= 0 ? promoPreview.totalCents : subtotalCents;
+  const promoNotEligible =
+    Boolean(promoPreview?.code) &&
+    promoPreview?.eligibleSubtotalCents === 0 &&
+    subtotalCents > 0 &&
+    discountCents === 0;
 
   return (
     <div className="min-h-screen w-full bg-[#070f2b] text-white -mx-5 sm:-mx-10">
@@ -177,7 +182,7 @@ export default function CartPage() {
             <SummaryRow label="Discount" value={formatCents(discountCents)} />
             <div className="h-px w-full bg-white/20" />
             <div className="space-y-2">
-              <p className="text-lg">Discount Code</p>
+              <p className="text-lg">Game Sale code</p>
               <div className="flex gap-2">
                 <input
                   className="h-[46px] w-full rounded-[10px] border border-white/30 bg-transparent px-3 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
@@ -193,7 +198,7 @@ export default function CartPage() {
                     !hasItems || promoLoading ? "opacity-60" : "hover:bg-[#232171]"
                   }`}
                 >
-                  {promoLoading ? "Applying…" : "Apply"}
+                  {promoLoading ? "Applying..." : "Apply"}
                 </button>
                 <button
                   type="button"
@@ -210,6 +215,11 @@ export default function CartPage() {
                 <p className="text-sm text-red-200/90">{promoError}</p>
               ) : promoPreview?.code ? (
                 <p className="text-sm text-white/70">Applied: {promoPreview.code}</p>
+              ) : null}
+              {promoNotEligible ? (
+                <p className="text-sm text-amber-100/80">
+                  This Game Sale code doesn’t apply to the items currently in your cart.
+                </p>
               ) : null}
             </div>
             <div className="h-px w-full bg-white/20" />

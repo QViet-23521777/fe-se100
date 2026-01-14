@@ -251,6 +251,7 @@ const StoreContext = createContext<{
     | {
         code: string;
         subtotalCents: number;
+        eligibleSubtotalCents: number;
         discountCents: number;
         totalCents: number;
       }
@@ -276,6 +277,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [promoPreview, setPromoPreview] = useState<{
     code: string;
     subtotalCents: number;
+    eligibleSubtotalCents: number;
     discountCents: number;
     totalCents: number;
   } | null>(null);
@@ -387,7 +389,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             logout();
             return;
           }
-          const message = extractApiErrorMessage(data) || "Failed to apply promo code.";
+          const message = extractApiErrorMessage(data) || "Failed to apply Game Sale code.";
           setPromoPreview(null);
           setPromoError(message);
           return;
@@ -404,6 +406,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           code: String(data?.code ?? nextCode),
           subtotalCents:
             typeof data?.subtotalCents === "number" ? Math.max(0, Math.floor(data.subtotalCents)) : 0,
+          eligibleSubtotalCents:
+            typeof data?.eligibleSubtotalCents === "number"
+              ? Math.max(0, Math.floor(data.eligibleSubtotalCents))
+              : typeof data?.subtotalCents === "number"
+                ? Math.max(0, Math.floor(data.subtotalCents))
+                : 0,
           discountCents:
             typeof data?.discountCents === "number" ? Math.max(0, Math.floor(data.discountCents)) : 0,
           totalCents:
@@ -412,7 +420,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error(err);
         setPromoPreview(null);
-        setPromoError("Failed to apply promo code. Please try again.");
+        setPromoError("Failed to apply Game Sale code. Please try again.");
       } finally {
         setPromoLoading(false);
       }
